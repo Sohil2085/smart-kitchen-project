@@ -1,0 +1,23 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom styles for fixed sidebar layout */
+body {
+  margin: 0;
+  padding: 0;
+}
+
+/* Ensure the main content area has proper spacing */
+.main-content {
+  margin-left: 18rem; /* 288px - matches w-72 */
+  min-height: 100vh;
+  transition: margin-left 0.3s ease;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .main-content {
+    margin-left: 0;
+  }
+}
