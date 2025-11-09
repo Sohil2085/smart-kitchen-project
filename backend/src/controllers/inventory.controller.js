@@ -343,6 +343,40 @@ const getExpiredItems = asyncHandler(async (req, res) => {
     );
 });
 
+// Get near-expiry items (expiring within 3 days)
+const getNearExpiryItems = asyncHandler(async (req, res) => {
+    const { days = 3 } = req.query; // Default to 3 days, but allow customization
+    const daysNum = parseInt(days);
+    
+    if (isNaN(daysNum) || daysNum < 0) {
+        throw new apiError("Invalid days parameter. Must be a non-negative number.", 400);
+    }
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    const futureDate = new Date(today);
+    futureDate.setDate(futureDate.getDate() + daysNum);
+    futureDate.setHours(23, 59, 59, 999);
+
+    // Find items expiring within the specified days (including today)
+    // Also filter out items with 0 stock and discontinued items
+    const nearExpiryItems = await InventoryItem.find({
+        expiryDate: {
+            $gte: today,
+            $lte: futureDate
+        },
+        currentStock: { $gt: 0 },
+        status: { $ne: 'discontinued' }
+    })
+    .populate('addedBy', 'fullname email role')
+    .sort({ expiryDate: 1 }); // Sort by expiry date (earliest first)
+
+    return res.status(200).json(
+        new apiResponse(200, nearExpiryItems, `Near-expiry items (expiring within ${daysNum} days) retrieved successfully`)
+    );
+});
+
 // Get items by category
 const getItemsByCategory = asyncHandler(async (req, res) => {
     const { category } = req.params;
@@ -525,6 +559,7 @@ export {
     deleteInventoryItem,
     getLowStockItems,
     getExpiredItems,
+    getNearExpiryItems,
     getItemsByCategory,
     getInventoryStats,
     exportInventoryToCSV,

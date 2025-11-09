@@ -203,6 +203,11 @@ export const InventoryAPI = {
     return http("/inventory/expired");
   },
 
+  // Get near-expiry items (expiring within specified days, default 3)
+  getNearExpiryItems(days = 3) {
+    return http(`/inventory/near-expiry?days=${days}`);
+  },
+
   // Get inventory statistics
   getStats() {
     return http("/inventory/stats");

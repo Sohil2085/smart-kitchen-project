@@ -21,6 +21,7 @@ export async function getPredictedExpiryAndRecipes(req, res) {
       });
     }
 
+    // Read CSV and find ingredient
     const csvData = await readIngredientsCSV();
     const ingredient = csvData.find(
       (i) => i.name.toLowerCase() === name.toLowerCase()
@@ -30,58 +31,39 @@ export async function getPredictedExpiryAndRecipes(req, res) {
       return res.status(404).json({ message: "Ingredient not found in CSV" });
     }
 
+    // Calculate expiry info
     const expiryDate = calculateExpiry(purchaseDate, ingredient.defaultShelfLifeDays);
     const daysLeft = daysToExpiry(expiryDate);
 
+    // ✅ Generate AI recipes (expiry check is done at the inventory list level, not here)
     const prompt = `You are a professional hotel chef AI working for an Indian restaurant.
-Using the ingredient "${ingredient.name}" (category: ${ingredient.category}, storage: ${ingredient.storageCondition}, expires in ${daysLeft} days), suggest 3 creative dishes to use it before expiry.
+Using the nearly expiring ingredient "${ingredient.name}" (category: ${ingredient.category}, storage: ${ingredient.storageCondition}, expires in ${daysLeft} days),
+create 3 smart Indian-style dishes to use it before expiry to reduce waste.
 
-CUISINE PREFERENCE: Prioritize Indian cuisine dishes with Indian spices, flavors, and cooking techniques. Try to create dishes with an Indian touch (like curries, sabzis, dals, biryanis, tikkas, etc.). However, if the ingredient doesn't work well with Indian cuisine or if an international/other country dish would be significantly better, you may suggest those dishes instead. The goal is to provide the best possible recipes while preferring Indian cuisine when appropriate.
+CUISINE PREFERENCE: Prefer Indian cuisine (curries, tikkas, sabzis, dals, biryanis) unless an international recipe suits the ingredient better.
+Focus on minimizing food waste and smart reuse.
 
-IMPORTANT: Return ONLY valid JSON array. Do NOT include markdown code blocks, backticks, or any other formatting. Return pure JSON only.
-
-Return JSON in this exact format:
+IMPORTANT: Return ONLY valid JSON array. Do NOT include markdown, backticks, or extra text.
+Return JSON in this format:
 [
   {
-    "name": "Clean Dish Name",
-    "description": "Clear and concise description of the dish",
+    "name": "Dish Name",
+    "description": "Short dish description",
     "ingredients": ["ingredient 1", "ingredient 2", "ingredient 3"],
-    "instructions": ["Step 1 instruction", "Step 2 instruction", "Step 3 instruction"],
+    "instructions": ["Step 1", "Step 2", "Step 3"],
     "time": "XX minutes"
   },
-  {
-    "name": "Clean Dish Name",
-    "description": "Clear and concise description of the dish",
-    "ingredients": ["ingredient 1", "ingredient 2", "ingredient 3"],
-    "instructions": ["Step 1 instruction", "Step 2 instruction", "Step 3 instruction"],
-    "time": "XX minutes"
-  },
-  {
-    "name": "Clean Dish Name",
-    "description": "Clear and concise description of the dish",
-    "ingredients": ["ingredient 1", "ingredient 2", "ingredient 3"],
-    "instructions": ["Step 1 instruction", "Step 2 instruction", "Step 3 instruction"],
-    "time": "XX minutes"
-  }
-]
-
-Remember: Return ONLY the JSON array, nothing else. No markdown, no code blocks, no explanations.`;
+  ...
+]`;
 
     // Generate using Gemini
     const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
     const result = await model.generateContent(prompt);
 
-    // Extract text response
-    let text = result.response.text();
-
-    // Clean markdown code blocks if present
-    text = text.trim();
-    if (text.startsWith('```json')) {
-      text = text.replace(/^```json\s*/i, '').replace(/\s*```$/i, '');
-    } else if (text.startsWith('```')) {
-      text = text.replace(/^```\s*/i, '').replace(/\s*```$/i, '');
-    }
-    text = text.trim();
+    // Extract and clean text
+    let text = result.response.text().trim();
+    if (text.startsWith("```json")) text = text.replace(/^```json\s*/, "").replace(/\s*```$/, "");
+    else if (text.startsWith("```")) text = text.replace(/^```\s*/, "").replace(/\s*```$/, "");
 
     let recipes;
     try {
