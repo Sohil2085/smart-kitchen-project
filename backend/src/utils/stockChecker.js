@@ -1,22 +1,63 @@
 import { InventoryItem } from "../models/inventory/inventoryItem.model.js";
 
 /**
+ * Find alternative available inventory items with the same name
+ * @param {String} ingredientName - Name of the ingredient to search for
+ * @param {String} excludeId - ID to exclude from search (the original item)
+ * @param {String} requiredUnit - Required unit for the ingredient
+ * @returns {Object|null} - Available inventory item or null
+ */
+const findAlternativeIngredient = async (ingredientName, excludeId, requiredUnit) => {
+    const now = new Date();
+    
+    // Find all items with the same name, excluding expired items and the original item
+    // Only check actual expiry date, not status field
+    const alternatives = await InventoryItem.find({
+        name: ingredientName,
+        _id: { $ne: excludeId },
+        currentStock: { $gt: 0 },
+        $or: [
+            { expiryDate: { $exists: false } },
+            { expiryDate: { $gte: now } }
+        ]
+    }).sort({ expiryDate: 1, currentStock: -1 }); // Prefer items with later expiry and more stock
+    
+    // Try to find an item with matching unit first
+    const matchingUnit = alternatives.find(item => item.unit === requiredUnit);
+    if (matchingUnit) {
+        return matchingUnit;
+    }
+    
+    // If no matching unit, return the first available alternative
+    return alternatives.length > 0 ? alternatives[0] : null;
+};
+
+/**
  * Check if all ingredients for a menu item are available in sufficient quantities
+ * Also returns a mapping of which actual inventory items to use (including alternatives)
  * @param {Array} ingredients - Array of ingredient objects with ingredient ID, quantity, and unit
  * @param {Number} quantity - Number of dishes to make (default: 1)
- * @returns {Object} - { isAvailable: boolean, stockStatus: string, missingIngredients: Array }
+ * @param {Boolean} returnItemMapping - If true, also return mapping of original to actual item IDs
+ * @returns {Object} - { isAvailable: boolean, stockStatus: string, missingIngredients: Array, itemMapping?: Object }
  */
-export const checkIngredientAvailability = async (ingredients, quantity = 1) => {
+export const checkIngredientAvailability = async (ingredients, quantity = 1, returnItemMapping = false) => {
     const missingIngredients = [];
     let hasLowStock = false;
     let hasOutOfStock = false;
+    const itemMapping = {}; // Maps original ingredient ID to actual item ID to use
 
     for (const ingredient of ingredients) {
-        const inventoryItem = await InventoryItem.findById(ingredient.ingredient);
+        const originalIngredientId = typeof ingredient.ingredient === 'object' 
+            ? ingredient.ingredient._id || ingredient.ingredient 
+            : ingredient.ingredient;
+        
+        let inventoryItem = await InventoryItem.findById(originalIngredientId);
+        let usedAlternative = false;
+        let actualItemId = originalIngredientId;
         
         if (!inventoryItem) {
             missingIngredients.push({
-                ingredient: ingredient.ingredient,
+                ingredient: originalIngredientId,
                 name: 'Unknown Ingredient',
                 required: ingredient.quantity * quantity,
                 available: 0,
@@ -27,30 +68,70 @@ export const checkIngredientAvailability = async (ingredients, quantity = 1) => 
             continue;
         }
 
-        // Check if ingredient is expired
+        const ingredientName = inventoryItem.name;
         const now = new Date();
+        // Only check actual expiry date, not status field (status might be incorrectly set)
         const isExpired = inventoryItem.expiryDate && new Date(inventoryItem.expiryDate) < now;
+        const requiredQuantity = ingredient.quantity * quantity;
+        let availableQuantity = inventoryItem.currentStock;
         
-        // If expired, treat as unavailable
-        if (isExpired || inventoryItem.status === 'expired') {
-            missingIngredients.push({
-                ingredient: ingredient.ingredient,
-                name: inventoryItem.name,
-                required: ingredient.quantity * quantity,
-                available: 0,
-                unit: ingredient.unit,
-                reason: 'Ingredient expired'
-            });
-            hasOutOfStock = true;
-            continue;
+        // Check if the original ingredient is expired or out of stock
+        // Only use actual expiry date check, not status field
+        if (isExpired || availableQuantity < requiredQuantity) {
+            // Try to find an alternative available item with the same name
+            const alternative = await findAlternativeIngredient(
+                ingredientName,
+                originalIngredientId,
+                ingredient.unit
+            );
+            
+            if (alternative) {
+                // Use the alternative item
+                inventoryItem = alternative;
+                availableQuantity = alternative.currentStock;
+                actualItemId = alternative._id.toString();
+                usedAlternative = true;
+                itemMapping[originalIngredientId.toString()] = actualItemId;
+                console.log(`Using alternative ${ingredientName} item: ${actualItemId} instead of ${originalIngredientId}`);
+            } else {
+                // No alternative found, mark as unavailable
+                if (isExpired) {
+                    missingIngredients.push({
+                        ingredient: originalIngredientId,
+                        name: inventoryItem.name,
+                        required: requiredQuantity,
+                        available: 0,
+                        unit: ingredient.unit,
+                        reason: 'Ingredient expired (no alternatives available)'
+                    });
+                    hasOutOfStock = true;
+                } else {
+                    missingIngredients.push({
+                        ingredient: originalIngredientId,
+                        name: inventoryItem.name,
+                        required: requiredQuantity,
+                        available: availableQuantity,
+                        unit: ingredient.unit,
+                        reason: availableQuantity === 0 ? 'Out of stock (no alternatives available)' : 'Insufficient quantity (no alternatives available)'
+                    });
+                    
+                    if (availableQuantity === 0) {
+                        hasOutOfStock = true;
+                    } else {
+                        hasLowStock = true;
+                    }
+                }
+                continue;
+            }
+        } else {
+            // Original item is available, use it
+            itemMapping[originalIngredientId.toString()] = actualItemId.toString();
         }
 
-        const requiredQuantity = ingredient.quantity * quantity;
-        const availableQuantity = inventoryItem.currentStock;
-
+        // Check if we have sufficient quantity (either from original or alternative)
         if (availableQuantity < requiredQuantity) {
             missingIngredients.push({
-                ingredient: ingredient.ingredient,
+                ingredient: actualItemId,
                 name: inventoryItem.name,
                 required: requiredQuantity,
                 available: availableQuantity,
@@ -81,11 +162,17 @@ export const checkIngredientAvailability = async (ingredients, quantity = 1) => 
         isAvailable = true; // Still available but with low stock warning
     }
 
-    return {
+    const result = {
         isAvailable,
         stockStatus,
         missingIngredients
     };
+
+    if (returnItemMapping) {
+        result.itemMapping = itemMapping;
+    }
+
+    return result;
 };
 
 /**

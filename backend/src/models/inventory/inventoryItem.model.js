@@ -11,12 +11,14 @@ const inventoryItemSchema = new Schema({
         type: Number,
         required: [true, "Quantity is required"],
         min: [0, "Quantity cannot be negative"]
+        // Note: Initial quantity when item was first created (historical reference)
     },
     currentStock: {
         type: Number,
         required: [true, "Current stock is required"],
         min: [0, "Current stock cannot be negative"],
         default: function() { return this.quantity; }
+        // IMPORTANT: SINGLE SOURCE OF TRUTH for available stock
     },
     unit: {
         type: String,

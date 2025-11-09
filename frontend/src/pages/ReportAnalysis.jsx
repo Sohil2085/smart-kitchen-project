@@ -50,6 +50,10 @@ const ReportAnalysis = () => {
   const [wasteStats, setWasteStats] = useState(null);
   const [wasteLogs, setWasteLogs] = useState([]);
   const [wasteLoading, setWasteLoading] = useState(false);
+  
+  // Expired items analytics state
+  const [expiredItemsData, setExpiredItemsData] = useState(null);
+  const [expiredItemsLoading, setExpiredItemsLoading] = useState(false);
 
   useEffect(() => {
     if (activeTab === 'order-shift') {
@@ -57,6 +61,7 @@ const ReportAnalysis = () => {
     } else if (activeTab === 'reports') {
       fetchSalesData();
       fetchWasteData();
+      fetchExpiredItems();
     }
   }, [activeTab, reportPeriod]);
 
@@ -70,9 +75,21 @@ const ReportAnalysis = () => {
       
       setMenuItems(menuResponse.data.docs || menuResponse.data || []);
       
-      // Filter inventory items that have stock > 0, or show all if none have stock
+      // Filter inventory items that have stock > 0 and are not expired
       const inventoryItems = ingredientsResponse.data.docs || ingredientsResponse.data || [];
-      const availableItems = inventoryItems.filter(item => item.currentStock > 0);
+      const now = new Date();
+      const availableItems = inventoryItems.filter(item => {
+        // Must have stock > 0
+        if (item.currentStock <= 0) return false;
+        
+        // Must not be expired
+        if (item.status === 'expired') return false;
+        
+        // Must not have passed expiry date
+        if (item.expiryDate && new Date(item.expiryDate) < now) return false;
+        
+        return true;
+      });
       
       // If no items have stock, show all items so users can still create recipes
       const finalItems = availableItems.length > 0 ? availableItems : inventoryItems;
@@ -179,6 +196,21 @@ const ReportAnalysis = () => {
       toast.error('Failed to fetch waste data: ' + error.message);
     } finally {
       setWasteLoading(false);
+    }
+  };
+
+  const fetchExpiredItems = async () => {
+    setExpiredItemsLoading(true);
+    try {
+      const params = { period: reportPeriod };
+      const response = await WasteAPI.getExpiredItems(params);
+      setExpiredItemsData(response.data);
+    } catch (error) {
+      console.error('Error fetching expired items:', error);
+      setExpiredItemsData(null);
+      // Don't show error toast, just log it
+    } finally {
+      setExpiredItemsLoading(false);
     }
   };
 
@@ -608,13 +640,16 @@ const ReportAnalysis = () => {
                 onClick={async () => {
                   try {
                     setWasteLoading(true);
+                    setExpiredItemsLoading(true);
                     await WasteAPI.processExpiredItems();
                     await fetchWasteData();
+                    await fetchExpiredItems();
                     toast.success('Expired items processed and logged as waste successfully!');
                   } catch (error) {
                     toast.error('Failed to process expired items: ' + error.message);
                   } finally {
                     setWasteLoading(false);
+                    setExpiredItemsLoading(false);
                   }
                 }}
                 className="bg-red-500 text-white px-4 py-2 rounded-lg hover:bg-red-600 transition-colors text-sm"
@@ -651,78 +686,52 @@ const ReportAnalysis = () => {
                   </div>
                 </div>
 
-                {/* Waste by Category Chart */}
-                {wasteStats.wasteByCategory && wasteStats.wasteByCategory.length > 0 && (
-                  <div className="mb-6">
-                    <h4 className="font-medium mb-3">Waste by Category</h4>
-                    <ResponsiveContainer width="100%" height={300}>
-                      <PieChart>
-                        <Pie
-                          data={wasteStats.wasteByCategory}
-                          cx="50%"
-                          cy="50%"
-                          labelLine={false}
-                          label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                          outerRadius={80}
-                          fill="#8884d8"
-                          dataKey="totalQuantity"
-                        >
-                          {wasteStats.wasteByCategory.map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={`hsl(${index * 60}, 70%, 50%)`} />
-                          ))}
-                        </Pie>
-                        <Tooltip formatter={(value) => [value.toFixed(2), 'Quantity']} />
-                      </PieChart>
-                    </ResponsiveContainer>
-                  </div>
-                )}
-
-                {/* Waste Trends Chart */}
-                {wasteStats.wasteTrends && wasteStats.wasteTrends.length > 0 && (
-                  <div className="mb-6">
-                    <h4 className="font-medium mb-3">Waste Trends (Last 30 Days)</h4>
-                    <ResponsiveContainer width="100%" height={300}>
-                      <AreaChart data={wasteStats.wasteTrends.map(trend => ({
-                        date: `${trend._id.month}/${trend._id.day}`,
-                        quantity: trend.totalQuantity,
-                        count: trend.count
-                      }))}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="date" />
-                        <YAxis />
-                        <Tooltip />
-                        <Legend />
-                        <Area type="monotone" dataKey="quantity" stroke="#ff6b6b" fill="#ff6b6b" name="Waste Quantity" />
-                        <Area type="monotone" dataKey="count" stroke="#ffa500" fill="#ffa500" name="Waste Logs" />
-                      </AreaChart>
-                    </ResponsiveContainer>
-                  </div>
-                )}
-
-                {/* Top Wasted Ingredients */}
+                {/* Top Wasted Ingredients Chart */}
                 {wasteStats.wasteByIngredient && wasteStats.wasteByIngredient.length > 0 && (
                   <div className="mb-6">
                     <h4 className="font-medium mb-3">Top Wasted Ingredients</h4>
-                    <div className="max-h-64 overflow-y-auto">
-                      <table className="w-full text-sm">
-                        <thead>
-                          <tr className="bg-gray-100">
-                            <th className="px-4 py-2 text-left">Ingredient</th>
-                            <th className="px-4 py-2 text-right">Quantity</th>
-                            <th className="px-4 py-2 text-right">Logs</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {wasteStats.wasteByIngredient.map((item, index) => (
-                            <tr key={index} className="border-b">
-                              <td className="px-4 py-2">{item.ingredient?.name || 'Unknown'}</td>
-                              <td className="px-4 py-2 text-right">{item.totalQuantity?.toFixed(2)} {item.ingredient?.unit || ''}</td>
-                              <td className="px-4 py-2 text-right">{item.count}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
+                    <ResponsiveContainer width="100%" height={300}>
+                      <BarChart 
+                        data={wasteStats.wasteByIngredient.slice(0, 10).map(item => ({
+                          name: item.ingredient?.name || 'Unknown',
+                          quantity: item.totalQuantity || 0,
+                          logs: item.count || 0,
+                          unit: item.ingredient?.unit || ''
+                        }))}
+                        layout="vertical"
+                      >
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis type="number" />
+                        <YAxis 
+                          type="category" 
+                          dataKey="name" 
+                          width={120}
+                          tick={{ fontSize: 12 }}
+                        />
+                        <Tooltip 
+                          formatter={(value, name, props) => {
+                            if (name === 'quantity') {
+                              const unit = props.payload.unit || '';
+                              return [`${value.toFixed(2)} ${unit}`, 'Waste Quantity'];
+                            }
+                            return [value, name === 'logs' ? 'Waste Logs' : name];
+                          }}
+                        />
+                        <Legend />
+                        <Bar 
+                          dataKey="quantity" 
+                          fill="#ff6b6b" 
+                          name="Waste Quantity"
+                          radius={[0, 4, 4, 0]}
+                        />
+                        <Bar 
+                          dataKey="logs" 
+                          fill="#ffa500" 
+                          name="Waste Logs"
+                          radius={[0, 4, 4, 0]}
+                        />
+                      </BarChart>
+                    </ResponsiveContainer>
                   </div>
                 )}
 
@@ -768,6 +777,137 @@ const ReportAnalysis = () => {
             ) : (
               <div className="text-center py-8 text-gray-500">
                 <p>No waste data available. Process expired items to generate waste logs.</p>
+              </div>
+            )}
+          </div>
+
+          {/* Expired Items Analysis Section */}
+          <div className="bg-white rounded-lg shadow-md p-6">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold">Expired Items Analysis</h3>
+            </div>
+
+            {expiredItemsLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-red-500"></div>
+              </div>
+            ) : expiredItemsData ? (
+              <>
+                {/* Expired Items Statistics Cards */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                  <div className="bg-red-50 p-4 rounded-lg">
+                    <h4 className="text-sm font-medium text-red-600">Total Expired Items</h4>
+                    <p className="text-2xl font-bold text-red-800">{expiredItemsData.totalExpiredItems || 0}</p>
+                  </div>
+                  <div className="bg-orange-50 p-4 rounded-lg">
+                    <h4 className="text-sm font-medium text-orange-600">Total Expired Quantity</h4>
+                    <p className="text-2xl font-bold text-orange-800">{expiredItemsData.totalExpiredQuantity?.toFixed(2) || '0.00'}</p>
+                  </div>
+                  <div className="bg-yellow-50 p-4 rounded-lg">
+                    <h4 className="text-sm font-medium text-yellow-600">Total Financial Loss</h4>
+                    <p className="text-2xl font-bold text-yellow-800">${expiredItemsData.totalExpiredCost?.toFixed(2) || '0.00'}</p>
+                  </div>
+                </div>
+
+                {/* Expired Items by Ingredient */}
+                {expiredItemsData.expiredByIngredient && expiredItemsData.expiredByIngredient.length > 0 && (
+                  <div className="mb-6">
+                    <h4 className="font-medium mb-3">Expired Items by Ingredient</h4>
+                    <div className="max-h-64 overflow-y-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="bg-gray-100">
+                            <th className="px-4 py-2 text-left">Ingredient</th>
+                            <th className="px-4 py-2 text-left">Category</th>
+                            <th className="px-4 py-2 text-right">Total Quantity</th>
+                            <th className="px-4 py-2 text-right">Financial Loss</th>
+                            <th className="px-4 py-2 text-right">Occurrences</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {expiredItemsData.expiredByIngredient.slice(0, 10).map((item, index) => (
+                            <tr key={index} className="border-b">
+                              <td className="px-4 py-2">{item.ingredient?.name || 'Unknown'}</td>
+                              <td className="px-4 py-2">
+                                <span className="px-2 py-1 rounded-full text-xs bg-gray-100 text-gray-800 capitalize">
+                                  {item.ingredient?.category || 'N/A'}
+                                </span>
+                              </td>
+                              <td className="px-4 py-2 text-right">{item.totalQuantity?.toFixed(2)} {item.ingredient?.unit || ''}</td>
+                              <td className="px-4 py-2 text-right">${item.totalCost?.toFixed(2) || '0.00'}</td>
+                              <td className="px-4 py-2 text-right">{item.count}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
+                {/* Expired Items Trends */}
+                {expiredItemsData.expiredByDate && expiredItemsData.expiredByDate.length > 0 && (
+                  <div className="mb-6">
+                    <h4 className="font-medium mb-3">Expired Items Trends</h4>
+                    <ResponsiveContainer width="100%" height={300}>
+                      <BarChart data={expiredItemsData.expiredByDate.map(item => ({
+                        date: new Date(item.date).toLocaleDateString(),
+                        quantity: item.totalQuantity,
+                        cost: item.totalCost,
+                        count: item.count
+                      }))}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="date" angle={-45} textAnchor="end" height={100} />
+                        <YAxis yAxisId="left" />
+                        <YAxis yAxisId="right" orientation="right" />
+                        <Tooltip />
+                        <Legend />
+                        <Bar yAxisId="left" dataKey="quantity" fill="#ff6b6b" name="Quantity" />
+                        <Bar yAxisId="right" dataKey="cost" fill="#ffa500" name="Cost ($)" />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                )}
+
+                {/* Recent Expired Items */}
+                {expiredItemsData.expiredItems && expiredItemsData.expiredItems.length > 0 && (
+                  <div>
+                    <h4 className="font-medium mb-3">Recent Expired Items</h4>
+                    <div className="max-h-64 overflow-y-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="bg-gray-100">
+                            <th className="px-4 py-2 text-left">Ingredient</th>
+                            <th className="px-4 py-2 text-right">Quantity</th>
+                            <th className="px-4 py-2 text-right">Cost</th>
+                            <th className="px-4 py-2 text-left">Logged Date</th>
+                            <th className="px-4 py-2 text-left">Logged By</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {expiredItemsData.expiredItems.slice(0, 10).map((item) => (
+                            <tr key={item._id} className="border-b">
+                              <td className="px-4 py-2">{item.ingredient?.name || 'Unknown'}</td>
+                              <td className="px-4 py-2 text-right">{item.quantity} {item.unit}</td>
+                              <td className="px-4 py-2 text-right">
+                                ${item.ingredient?.cost ? (item.quantity * item.ingredient.cost).toFixed(2) : '0.00'}
+                              </td>
+                              <td className="px-4 py-2 text-left">
+                                {new Date(item.loggedAt).toLocaleDateString()}
+                              </td>
+                              <td className="px-4 py-2 text-left">
+                                {item.loggedBy?.fullname || 'System'}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="text-center py-8 text-gray-500">
+                <p>No expired items data available. Process expired items to see analytics.</p>
               </div>
             )}
           </div>

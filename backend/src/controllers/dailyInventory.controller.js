@@ -66,6 +66,8 @@ const getDateInventory = asyncHandler(async (req, res) => {
 });
 
 // Add item to today's inventory
+// IMPORTANT: General inventory (InventoryItem.currentStock) is the SINGLE SOURCE OF TRUTH for stock
+// Daily inventory entries are just TRACKING entries for FIFO and daily usage tracking
 const addItemToToday = asyncHandler(async (req, res) => {
     const today = getTodayDate();
     
@@ -104,25 +106,33 @@ const addItemToToday = asyncHandler(async (req, res) => {
         finalExpiryDate = new Date(expiryDate);
     }
 
-    // Create daily inventory entry
+    // STEP 1: Update general inventory stock (SINGLE SOURCE OF TRUTH)
+    // This is the ONLY place where actual stock is stored
+    const updatedInventoryItem = await InventoryItem.findByIdAndUpdate(
+        inventoryItemId,
+        {
+            $inc: { currentStock: parsedQuantity },
+            lastUpdatedBy: req.user._id
+        },
+        { new: true }
+    );
+
+    if (!updatedInventoryItem) {
+        throw new apiError("Failed to update inventory item", 500);
+    }
+
+    // STEP 2: Create daily inventory entry (TRACKING ONLY - for FIFO and daily usage tracking)
+    // This entry tracks what was added today and what's remaining for FIFO purposes
+    // It does NOT hold actual stock - it's just a tracking/log entry
     const entry = await DailyInventoryEntry.create({
         date: today,
         inventoryItem: inventoryItemId,
         quantity: parsedQuantity,
-        remainingQuantity: parsedQuantity,
+        remainingQuantity: parsedQuantity, // For FIFO tracking - tracks how much is left from this batch
         cost: parsedCost,
         expiryDate: finalExpiryDate,
         addedBy: req.user._id
     });
-
-    // Update main inventory item's current stock
-    await InventoryItem.findByIdAndUpdate(
-        inventoryItemId,
-        {
-            $inc: { currentStock: parsedQuantity, quantity: parsedQuantity },
-            lastUpdatedBy: req.user._id
-        }
-    );
 
     const populatedEntry = await DailyInventoryEntry.findById(entry._id)
         .populate('inventoryItem')
@@ -133,48 +143,80 @@ const addItemToToday = asyncHandler(async (req, res) => {
     );
 });
 
-// Deduct quantity from daily inventory (used when orders are made)
+// Deduct quantity from inventory (used when orders are made)
+// IMPORTANT: General inventory (InventoryItem.currentStock) is the SINGLE SOURCE OF TRUTH
+// We deduct from general inventory first, then update daily inventory entries for FIFO tracking
 const deductFromDailyInventory = asyncHandler(async (inventoryItemId, quantity, userId) => {
     const today = getTodayDate();
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
     
-    // Find today's entries for this inventory item, ordered by expiry date (FIFO - First In First Out)
-    const entries = await DailyInventoryEntry.find({
-        date: today,
-        inventoryItem: inventoryItemId,
-        remainingQuantity: { $gt: 0 }
-    }).sort({ expiryDate: 1, createdAt: 1 }); // Use earliest expiry first, then earliest added
-
-    let remainingToDeduct = quantity;
-
-    for (const entry of entries) {
-        if (remainingToDeduct <= 0) break;
-
-        // Check if entry is expired
-        if (entry.expiryDate && new Date(entry.expiryDate) < new Date()) {
-            continue; // Skip expired items
-        }
-
-        const deductAmount = Math.min(entry.remainingQuantity, remainingToDeduct);
-        entry.remainingQuantity -= deductAmount;
-        remainingToDeduct -= deductAmount;
-        await entry.save();
+    // STEP 1: Get the inventory item and check stock in GENERAL INVENTORY (SINGLE SOURCE OF TRUTH)
+    const inventoryItem = await InventoryItem.findById(inventoryItemId);
+    if (!inventoryItem) {
+        throw new apiError(`Inventory item ${inventoryItemId} not found`, 404);
     }
 
-    if (remainingToDeduct > 0) {
+    // Check if general inventory has sufficient stock
+    if (inventoryItem.currentStock < quantity) {
         throw new apiError(
-            `Insufficient stock in daily inventory. Required: ${quantity}, Available: ${quantity - remainingToDeduct}`,
+            `Insufficient stock for ${inventoryItem.name}. Required: ${quantity}, Available: ${inventoryItem.currentStock}`,
             400
         );
     }
-
-    // Also update main inventory item
-    await InventoryItem.findByIdAndUpdate(
+    
+    // STEP 2: Deduct from GENERAL INVENTORY (SINGLE SOURCE OF TRUTH)
+    // This is the ONLY place where actual stock is reduced
+    const updatedItem = await InventoryItem.findByIdAndUpdate(
         inventoryItemId,
         {
             $inc: { currentStock: -quantity },
             lastUpdatedBy: userId
-        }
+        },
+        { new: true }
     );
+
+    if (!updatedItem) {
+        throw new apiError(`Failed to update inventory item ${inventoryItemId}`, 500);
+    }
+
+    // STEP 3: Update daily inventory entries for FIFO tracking (TRACKING ONLY)
+    // Find today's entries for this inventory item, ordered by expiry date (FIFO)
+    // Use date range query to handle timezone issues
+    const entries = await DailyInventoryEntry.find({
+        date: {
+            $gte: today,
+            $lt: tomorrow
+        },
+        inventoryItem: inventoryItemId,
+        remainingQuantity: { $gt: 0 }
+    }).sort({ expiryDate: 1, createdAt: 1 }); // Use earliest expiry first, then earliest added
+
+    let remainingToTrack = quantity;
+    const now = new Date();
+
+    // Update daily inventory entries for FIFO tracking
+    // This is just for tracking purposes - the actual stock was already deducted above
+    if (entries.length > 0) {
+        for (const entry of entries) {
+            if (remainingToTrack <= 0) break;
+
+            // Skip expired items in tracking (they shouldn't be used)
+            if (entry.expiryDate && new Date(entry.expiryDate) < now) {
+                continue;
+            }
+
+            // Update remainingQuantity for FIFO tracking
+            const trackAmount = Math.min(entry.remainingQuantity, remainingToTrack);
+            entry.remainingQuantity -= trackAmount;
+            remainingToTrack -= trackAmount;
+            await entry.save();
+        }
+    }
+
+    // Note: If there are no daily inventory entries or we couldn't track all of it,
+    // that's okay - the stock was already deducted from general inventory.
+    // Daily inventory entries are just for tracking/FIFO purposes, not for holding actual stock.
 });
 
 // End the day

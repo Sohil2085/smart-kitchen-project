@@ -23,24 +23,31 @@ const InventoryManagement = () => {
   const [showDailyInventory, setShowDailyInventory] = useState(true);
   const [formData, setFormData] = useState({
     name: '',
-    quantity: '',
+    quantity: 0, // Set to 0 by default for General Inventory
     unit: 'pcs',
-    expiryDate: '',
     storageCondition: 'normal_temperature',
     category: 'other',
-    supplier: '',
+    minThreshold: '',
+    maxThreshold: '',
+    notes: '',
+    image: null
+  });
+  const [dailyFormData, setDailyFormData] = useState({
+    inventoryItemId: '',
+    isNewItem: false,
+    name: '',
+    quantity: '',
+    unit: 'pcs',
+    category: 'other',
+    storageCondition: 'normal_temperature',
+    expiryDate: '',
     cost: '',
+    supplier: '',
     minThreshold: '',
     maxThreshold: '',
     notes: '',
     image: null,
     freshness: 'fresh'
-  });
-  const [dailyFormData, setDailyFormData] = useState({
-    inventoryItemId: '',
-    quantity: '',
-    cost: '',
-    expiryDate: ''
   });
   const [editingItem, setEditingItem] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -119,18 +126,65 @@ const InventoryManagement = () => {
     if (type === 'file') {
       setFormData((prev) => ({ ...prev, [name]: files[0] }));
     } else {
-      setFormData((prev) => {
+      setFormData((prev) => ({ ...prev, [name]: value }));
+    }
+  };
+
+  const handleDailyInputChange = (e) => {
+    const { name, value, type, files } = e.target;
+    if (type === 'file') {
+      setDailyFormData((prev) => ({ ...prev, [name]: files[0] }));
+    } else if (type === 'checkbox') {
+      setDailyFormData((prev) => ({ ...prev, [name]: e.target.checked }));
+    } else {
+      setDailyFormData((prev) => {
         const newData = { ...prev, [name]: value };
         
         // Handle category change - reset freshness and expiry date
         if (name === 'category') {
           newData.freshness = 'fresh';
-          newData.expiryDate = '';
+          // Set default expiry date based on category (only for new items)
+          if (newData.isNewItem) {
+            if (!requiresManualExpiryDate(value)) {
+              newData.expiryDate = calculateExpiryDate(value, 'fresh');
+            } else {
+              // For manual entry categories, set default
+              newData.expiryDate = getDefaultExpiryDate(value);
+            }
+          }
         }
         
         // Handle freshness change - calculate expiry date if not manual entry
-        if (name === 'freshness' && !requiresManualExpiryDate(newData.category)) {
+        if (name === 'freshness' && !requiresManualExpiryDate(newData.category) && newData.isNewItem) {
           newData.expiryDate = calculateExpiryDate(newData.category, value);
+        }
+
+        // When selecting an existing item, populate fields but keep expiry date and cost editable
+        if (name === 'inventoryItemId' && value) {
+          const selectedItem = availableItems.find(item => item._id === value);
+          if (selectedItem) {
+            newData.isNewItem = false;
+            newData.name = selectedItem.name;
+            newData.unit = selectedItem.unit;
+            newData.category = selectedItem.category;
+            newData.storageCondition = selectedItem.storageCondition;
+            newData.supplier = selectedItem.supplier || '';
+            newData.minThreshold = selectedItem.minThreshold || '';
+            newData.maxThreshold = selectedItem.maxThreshold || '';
+            newData.notes = selectedItem.notes || '';
+            // Don't override expiry date and cost - let user set them for this daily entry
+          }
+        }
+
+        // When toggling isNewItem, clear inventoryItemId if creating new
+        if (name === 'isNewItem' && value === true) {
+          newData.inventoryItemId = '';
+          // Set default expiry date when switching to new item
+          if (!requiresManualExpiryDate(newData.category)) {
+            newData.expiryDate = calculateExpiryDate(newData.category, newData.freshness);
+          } else {
+            newData.expiryDate = getDefaultExpiryDate(newData.category);
+          }
         }
         
         return newData;
@@ -138,16 +192,16 @@ const InventoryManagement = () => {
     }
   };
 
-  const handleDailyInputChange = (e) => {
-    const { name, value } = e.target;
-    setDailyFormData((prev) => ({ ...prev, [name]: value }));
-  };
-
   const handleAddItem = async (e) => {
     e.preventDefault();
     try {
       setLoading(true);
-      await InventoryAPI.addItem(formData);
+      // Ensure quantity is set to 0 for General Inventory
+      const itemData = {
+        ...formData,
+        quantity: formData.quantity || 0
+      };
+      await InventoryAPI.addItem(itemData);
       toast.success('Item added successfully');
       setShowAddForm(false);
       resetForm();
@@ -167,28 +221,77 @@ const InventoryManagement = () => {
       return;
     }
 
-    if (!dailyFormData.inventoryItemId || !dailyFormData.quantity) {
-      toast.error('Please select an item and enter quantity');
-      return;
+    // Validation
+    if (dailyFormData.isNewItem) {
+      if (!dailyFormData.name || !dailyFormData.quantity || !dailyFormData.category || !dailyFormData.storageCondition) {
+        toast.error('Please fill in all required fields (Item Name, Quantity, Category, Storage Condition)');
+        return;
+      }
+      if (requiresManualExpiryDate(dailyFormData.category) && !dailyFormData.expiryDate) {
+        toast.error('Please enter expiry date for this category');
+        return;
+      }
+    } else {
+      if (!dailyFormData.inventoryItemId || !dailyFormData.quantity) {
+        toast.error('Please select an item and enter quantity');
+        return;
+      }
     }
 
     try {
       setLoadingDaily(true);
+      let inventoryItemId = dailyFormData.inventoryItemId;
+
+      // If creating a new item, create it in inventory first
+      if (dailyFormData.isNewItem) {
+        const itemData = {
+          name: dailyFormData.name,
+          quantity: dailyFormData.quantity,
+          unit: dailyFormData.unit,
+          category: dailyFormData.category,
+          storageCondition: dailyFormData.storageCondition,
+          expiryDate: dailyFormData.expiryDate || undefined,
+          supplier: dailyFormData.supplier || undefined,
+          cost: dailyFormData.cost || undefined,
+          minThreshold: dailyFormData.minThreshold || undefined,
+          maxThreshold: dailyFormData.maxThreshold || undefined,
+          notes: dailyFormData.notes || undefined,
+          image: dailyFormData.image || undefined
+        };
+
+        const newItemResponse = await InventoryAPI.addItem(itemData);
+        inventoryItemId = newItemResponse.data._id;
+      }
+
+      // Add to today's inventory
       await DailyInventoryAPI.addItemToToday({
-        inventoryItemId: dailyFormData.inventoryItemId,
+        inventoryItemId: inventoryItemId,
         quantity: dailyFormData.quantity,
         cost: dailyFormData.cost || undefined,
         expiryDate: dailyFormData.expiryDate || undefined
       });
+
       toast.success('Item added to today\'s inventory successfully');
       setDailyFormData({
         inventoryItemId: '',
+        isNewItem: false,
+        name: '',
         quantity: '',
+        unit: 'pcs',
+        category: 'other',
+        storageCondition: 'normal_temperature',
+        expiryDate: '',
         cost: '',
-        expiryDate: ''
+        supplier: '',
+        minThreshold: '',
+        maxThreshold: '',
+        notes: '',
+        image: null,
+        freshness: 'fresh'
       });
       fetchTodayInventory();
       fetchItems();
+      fetchAvailableItems();
     } catch (error) {
       toast.error('Failed to add item: ' + error.message);
     } finally {
@@ -237,7 +340,12 @@ const InventoryManagement = () => {
     if (!editingItem) return;
     try {
       setLoading(true);
-      await InventoryAPI.updateItem(editingItem._id, formData);
+      // Ensure quantity is preserved for General Inventory updates
+      const itemData = {
+        ...formData,
+        quantity: editingItem.quantity || formData.quantity || 0
+      };
+      await InventoryAPI.updateItem(editingItem._id, itemData);
       toast.success('Item updated successfully');
       setShowUpdateForm(false);
       resetForm();
@@ -300,18 +408,14 @@ const InventoryManagement = () => {
   const startUpdate = (item) => {
     setFormData({
       name: item.name,
-      quantity: item.quantity,
+      quantity: item.quantity || 0,
       unit: item.unit,
-      expiryDate: item.expiryDate ? new Date(item.expiryDate).toISOString().split('T')[0] : '',
       storageCondition: item.storageCondition,
       category: item.category,
-      supplier: item.supplier || '',
-      cost: item.cost || '',
       minThreshold: item.minThreshold || '',
       maxThreshold: item.maxThreshold || '',
       notes: item.notes || '',
-      image: null,
-      freshness: 'fresh'
+      image: null
     });
     setEditingItem(item);
     setShowUpdateForm(true);
@@ -320,18 +424,14 @@ const InventoryManagement = () => {
   const resetForm = () => {
     setFormData({
       name: '',
-      quantity: '',
+      quantity: 0,
       unit: 'pcs',
-      expiryDate: '',
       storageCondition: 'normal_temperature',
       category: 'other',
-      supplier: '',
-      cost: '',
       minThreshold: '',
       maxThreshold: '',
       notes: '',
-      image: null,
-      freshness: 'fresh'
+      image: null
     });
   };
 
@@ -394,17 +494,61 @@ const InventoryManagement = () => {
           {/* Add Item to Today Form */}
           {!dayStatus.isDayEnded && (
             <div className="bg-white p-6 rounded-lg shadow-md mb-6">
-              <h3 className="text-lg font-semibold mb-4">Add Item to Today's Inventory</h3>
+              <h3 className="text-lg font-semibold mb-4">Add New Item</h3>
               <form onSubmit={handleAddToToday}>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
+                {/* Toggle between existing item and new item */}
+                <div className="mb-4 flex items-center space-x-4">
+                  <label className="flex items-center space-x-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="itemType"
+                      checked={!dailyFormData.isNewItem}
+                      onChange={() => {
+                        setDailyFormData(prev => ({
+                          ...prev,
+                          isNewItem: false,
+                          inventoryItemId: '',
+                          name: '',
+                          expiryDate: '',
+                          cost: ''
+                        }));
+                      }}
+                      className="form-radio"
+                    />
+                    <span className="text-sm font-medium text-gray-700">Select Existing Item</span>
+                  </label>
+                  <label className="flex items-center space-x-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="itemType"
+                      checked={dailyFormData.isNewItem}
+                      onChange={() => {
+                        const defaultExpiry = !requiresManualExpiryDate(dailyFormData.category)
+                          ? calculateExpiryDate(dailyFormData.category, 'fresh')
+                          : getDefaultExpiryDate(dailyFormData.category);
+                        setDailyFormData(prev => ({
+                          ...prev,
+                          isNewItem: true,
+                          inventoryItemId: '',
+                          expiryDate: defaultExpiry
+                        }));
+                      }}
+                      className="form-radio"
+                    />
+                    <span className="text-sm font-medium text-gray-700">Create New Item</span>
+                  </label>
+                </div>
+
+                {/* Select existing item (shown when not creating new) */}
+                {!dailyFormData.isNewItem && (
+                  <div className="mb-4">
                     <label className="block text-sm font-medium text-gray-700 mb-1">Select Item *</label>
                     <select
                       name="inventoryItemId"
                       value={dailyFormData.inventoryItemId}
                       onChange={handleDailyInputChange}
                       className="p-2 border border-gray-300 rounded w-full"
-                      required
+                      required={!dailyFormData.isNewItem}
                     >
                       <option value="">Select an item</option>
                       {availableItems.map((item) => (
@@ -414,51 +558,350 @@ const InventoryManagement = () => {
                       ))}
                     </select>
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Quantity *</label>
-                    <input
-                      type="number"
-                      name="quantity"
-                      value={dailyFormData.quantity}
-                      onChange={handleDailyInputChange}
-                      placeholder="Quantity"
-                      className="p-2 border border-gray-300 rounded w-full"
-                      min="0.01"
-                      step="0.01"
-                      required
-                    />
+                )}
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Left Column */}
+                  <div className="space-y-4">
+                    {/* Item Name */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Item Name {dailyFormData.isNewItem ? '*' : ''}
+                      </label>
+                      {dailyFormData.isNewItem ? (
+                        <input
+                          type="text"
+                          name="name"
+                          value={dailyFormData.name}
+                          onChange={handleDailyInputChange}
+                          placeholder="Item Name"
+                          className="p-2 border border-gray-300 rounded w-full"
+                          required={dailyFormData.isNewItem}
+                        />
+                      ) : (
+                        <input
+                          type="text"
+                          value={dailyFormData.name || 'Select an item above'}
+                          className="p-2 border border-gray-300 rounded w-full bg-gray-100"
+                          disabled
+                        />
+                      )}
+                    </div>
+
+                    {/* Unit */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Unit</label>
+                      {dailyFormData.isNewItem ? (
+                        <select
+                          name="unit"
+                          value={dailyFormData.unit}
+                          onChange={handleDailyInputChange}
+                          className="p-2 border border-gray-300 rounded w-full"
+                        >
+                          <option value="pcs">pcs</option>
+                          <option value="kg">kg</option>
+                          <option value="ltr">ltr</option>
+                          <option value="g">g</option>
+                          <option value="ml">ml</option>
+                          <option value="lb">lb</option>
+                          <option value="oz">oz</option>
+                        </select>
+                      ) : (
+                        <input
+                          type="text"
+                          value={dailyFormData.unit || 'pcs'}
+                          className="p-2 border border-gray-300 rounded w-full bg-gray-100"
+                          disabled
+                        />
+                      )}
+                    </div>
+
+                    {/* Storage Condition */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Storage Condition {dailyFormData.isNewItem ? '*' : ''}
+                      </label>
+                      {dailyFormData.isNewItem ? (
+                        <select
+                          name="storageCondition"
+                          value={dailyFormData.storageCondition}
+                          onChange={handleDailyInputChange}
+                          className="p-2 border border-gray-300 rounded w-full"
+                          required={dailyFormData.isNewItem}
+                        >
+                          <option value="normal_temperature">Normal Temperature</option>
+                          <option value="fridge">Fridge</option>
+                          <option value="freezer">Freezer</option>
+                          <option value="room_temperature">Room Temperature</option>
+                          <option value="pantry">Pantry</option>
+                          <option value="dry_storage">Dry Storage</option>
+                        </select>
+                      ) : (
+                        <input
+                          type="text"
+                          value={dailyFormData.storageCondition ? dailyFormData.storageCondition.replace('_', ' ') : 'Normal Temperature'}
+                          className="p-2 border border-gray-300 rounded w-full bg-gray-100 capitalize"
+                          disabled
+                        />
+                      )}
+                    </div>
+
+                    {/* Supplier */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Supplier</label>
+                      {dailyFormData.isNewItem ? (
+                        <input
+                          type="text"
+                          name="supplier"
+                          value={dailyFormData.supplier}
+                          onChange={handleDailyInputChange}
+                          placeholder="Supplier Name"
+                          className="p-2 border border-gray-300 rounded w-full"
+                        />
+                      ) : (
+                        <input
+                          type="text"
+                          value={dailyFormData.supplier || 'N/A'}
+                          className="p-2 border border-gray-300 rounded w-full bg-gray-100"
+                          disabled
+                        />
+                      )}
+                    </div>
+
+                    {/* Min Threshold */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Min Threshold</label>
+                      {dailyFormData.isNewItem ? (
+                        <input
+                          type="number"
+                          name="minThreshold"
+                          value={dailyFormData.minThreshold}
+                          onChange={handleDailyInputChange}
+                          placeholder="Minimum stock level"
+                          className="p-2 border border-gray-300 rounded w-full"
+                          min="0"
+                        />
+                      ) : (
+                        <input
+                          type="text"
+                          value={dailyFormData.minThreshold || 'N/A'}
+                          className="p-2 border border-gray-300 rounded w-full bg-gray-100"
+                          disabled
+                        />
+                      )}
+                    </div>
+
+                    {/* Notes */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+                      {dailyFormData.isNewItem ? (
+                        <textarea
+                          name="notes"
+                          value={dailyFormData.notes}
+                          onChange={handleDailyInputChange}
+                          placeholder="Additional notes"
+                          className="p-2 border border-gray-300 rounded w-full"
+                          rows="3"
+                        />
+                      ) : (
+                        <textarea
+                          value={dailyFormData.notes || 'No notes'}
+                          className="p-2 border border-gray-300 rounded w-full bg-gray-100"
+                          rows="3"
+                          disabled
+                        />
+                      )}
+                    </div>
+
+                    {/* Image */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Image</label>
+                      {dailyFormData.isNewItem ? (
+                        <input
+                          type="file"
+                          name="image"
+                          onChange={handleDailyInputChange}
+                          accept="image/*"
+                          className="p-2 border border-gray-300 rounded w-full"
+                        />
+                      ) : (
+                        <input
+                          type="text"
+                          value={dailyFormData.image ? 'Image uploaded' : 'No image'}
+                          className="p-2 border border-gray-300 rounded w-full bg-gray-100"
+                          disabled
+                        />
+                      )}
+                    </div>
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Cost per Unit</label>
-                    <input
-                      type="number"
-                      name="cost"
-                      value={dailyFormData.cost}
-                      onChange={handleDailyInputChange}
-                      placeholder="Cost"
-                      className="p-2 border border-gray-300 rounded w-full"
-                      min="0"
-                      step="0.01"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Expiry Date</label>
-                    <input
-                      type="date"
-                      name="expiryDate"
-                      value={dailyFormData.expiryDate}
-                      onChange={handleDailyInputChange}
-                      className="p-2 border border-gray-300 rounded w-full"
-                    />
+
+                  {/* Right Column */}
+                  <div className="space-y-4">
+                    {/* Quantity */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Quantity *</label>
+                      <input
+                        type="number"
+                        name="quantity"
+                        value={dailyFormData.quantity}
+                        onChange={handleDailyInputChange}
+                        placeholder="Quantity"
+                        className="p-2 border border-gray-300 rounded w-full"
+                        min="0.01"
+                        step="0.01"
+                        required
+                      />
+                    </div>
+
+                    {/* Category */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Category {dailyFormData.isNewItem ? '*' : ''}
+                      </label>
+                      {dailyFormData.isNewItem ? (
+                        <select
+                          name="category"
+                          value={dailyFormData.category}
+                          onChange={handleDailyInputChange}
+                          className="p-2 border border-gray-300 rounded w-full"
+                          required={dailyFormData.isNewItem}
+                        >
+                          <option value="vegetables">Vegetables</option>
+                          <option value="fruits">Fruits</option>
+                          <option value="dairy">Dairy</option>
+                          <option value="meat">Meat</option>
+                          <option value="seafood">Seafood</option>
+                          <option value="grains">Grains</option>
+                          <option value="spices">Spices</option>
+                          <option value="beverages">Beverages</option>
+                          <option value="frozen">Frozen</option>
+                          <option value="canned">Canned</option>
+                          <option value="other">Other</option>
+                        </select>
+                      ) : (
+                        <input
+                          type="text"
+                          value={dailyFormData.category ? dailyFormData.category.charAt(0).toUpperCase() + dailyFormData.category.slice(1) : 'Other'}
+                          className="p-2 border border-gray-300 rounded w-full bg-gray-100 capitalize"
+                          disabled
+                        />
+                      )}
+                    </div>
+
+                    {/* Expiry Date */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Expiry Date {dailyFormData.isNewItem && requiresManualExpiryDate(dailyFormData.category) ? '*' : ''}
+                      </label>
+                      <input
+                        type="date"
+                        name="expiryDate"
+                        value={dailyFormData.expiryDate}
+                        onChange={handleDailyInputChange}
+                        placeholder="dd-mm-yyyy"
+                        className="p-2 border border-gray-300 rounded w-full"
+                        required={dailyFormData.isNewItem && requiresManualExpiryDate(dailyFormData.category)}
+                      />
+                      <p className="text-xs text-gray-500 mt-1">
+                        {dailyFormData.isNewItem 
+                          ? getExpiryDateDescription(dailyFormData.category)
+                          : "Please enter the expiry date manually or leave blank for default (30 days)"}
+                      </p>
+                    </div>
+
+                    {/* Freshness Level (only for categories that support it) */}
+                    {dailyFormData.isNewItem && !requiresManualExpiryDate(dailyFormData.category) && (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Freshness Level</label>
+                        <select
+                          name="freshness"
+                          value={dailyFormData.freshness}
+                          onChange={handleDailyInputChange}
+                          className="p-2 border border-gray-300 rounded w-full"
+                        >
+                          {getFreshnessOptions(dailyFormData.category).map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                        <p className="text-xs text-gray-500 mt-1">
+                          {getExpiryDateDescription(dailyFormData.category)}
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Cost */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Cost</label>
+                      <input
+                        type="number"
+                        name="cost"
+                        value={dailyFormData.cost}
+                        onChange={handleDailyInputChange}
+                        placeholder="Cost per unit"
+                        className="p-2 border border-gray-300 rounded w-full"
+                        min="0"
+                        step="0.01"
+                      />
+                    </div>
+
+                    {/* Max Threshold */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Max Threshold</label>
+                      {dailyFormData.isNewItem ? (
+                        <input
+                          type="number"
+                          name="maxThreshold"
+                          value={dailyFormData.maxThreshold}
+                          onChange={handleDailyInputChange}
+                          placeholder="Maximum stock level"
+                          className="p-2 border border-gray-300 rounded w-full"
+                          min="0"
+                        />
+                      ) : (
+                        <input
+                          type="text"
+                          value={dailyFormData.maxThreshold || 'N/A'}
+                          className="p-2 border border-gray-300 rounded w-full bg-gray-100"
+                          disabled
+                        />
+                      )}
+                    </div>
                   </div>
                 </div>
-                <div className="mt-4">
+
+                <div className="mt-6 flex space-x-4">
                   <button
                     type="submit"
                     className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50"
                     disabled={loadingDaily}
                   >
-                    {loadingDaily ? 'Adding...' : 'Add to Today'}
+                    {loadingDaily ? 'Adding...' : 'Add Item'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDailyFormData({
+                      inventoryItemId: '',
+                      isNewItem: false,
+                      name: '',
+                      quantity: '',
+                      unit: 'pcs',
+                      category: 'other',
+                      storageCondition: 'normal_temperature',
+                      expiryDate: '',
+                      cost: '',
+                      supplier: '',
+                      minThreshold: '',
+                      maxThreshold: '',
+                      notes: '',
+                      image: null,
+                      freshness: 'fresh'
+                    })}
+                    className="px-4 py-2 bg-gray-300 text-gray-800 rounded hover:bg-gray-400"
+                    disabled={loadingDaily}
+                  >
+                    Cancel
                   </button>
                 </div>
               </form>
@@ -630,7 +1073,7 @@ const InventoryManagement = () => {
 
           {/* Display Available Items */}
           <div className="mb-8">
-            <h2 className="text-xl font-semibold mb-2 text-gray-700">Available Items</h2>
+            <h2 className="text-xl font-semibold mb-4 text-gray-700">Available Items</h2>
             {loading ? (
               <div className="flex justify-center items-center py-8">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
@@ -638,89 +1081,103 @@ const InventoryManagement = () => {
             ) : items.length === 0 ? (
               <p className="text-gray-500">No items available.</p>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="min-w-full bg-white border border-gray-200 rounded-lg shadow">
-                  <thead className="bg-blue-100">
-                    <tr>
-                      <th className="py-2 px-4 border-b text-left text-sm font-medium text-gray-700">Name</th>
-                      <th className="py-2 px-4 border-b text-left text-sm font-medium text-gray-700">Current Stock</th>
-                      <th className="py-2 px-4 border-b text-left text-sm font-medium text-gray-700">Unit</th>
-                      <th className="py-2 px-4 border-b text-left text-sm font-medium text-gray-700">Category</th>
-                      <th className="py-2 px-4 border-b text-left text-sm font-medium text-gray-700">Storage</th>
-                      <th className="py-2 px-4 border-b text-left text-sm font-medium text-gray-700">Expiry Date</th>
-                      <th className="py-2 px-4 border-b text-left text-sm font-medium text-gray-700">Status</th>
-                      <th className="py-2 px-4 border-b text-left text-sm font-medium text-gray-700">Added By</th>
-                      <th className="py-2 px-4 border-b text-left text-sm font-medium text-gray-700">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {items.map((item) => (
-                      <tr key={item._id} className="hover:bg-gray-50">
-                        <td className="py-2 px-4 border-b text-sm text-gray-800">{item.name}</td>
-                        <td className="py-2 px-4 border-b text-sm text-gray-800">{item.currentStock}</td>
-                        <td className="py-2 px-4 border-b text-sm text-gray-800">{item.unit}</td>
-                        <td className="py-2 px-4 border-b text-sm text-gray-800 capitalize">{item.category}</td>
-                        <td className="py-2 px-4 border-b text-sm text-gray-800 capitalize">{item.storageCondition?.replace('_', ' ')}</td>
-                        <td className="py-2 px-4 border-b text-sm">
-                          {item.expiryDate ? (
-                            <div>
-                              <div className={getExpiryStatusClass(item.expiryDate)}>
-                                {new Date(item.expiryDate).toLocaleDateString()}
-                              </div>
-                              {(() => {
-                                const days = getDaysUntilExpiry(item.expiryDate);
-                                if (days !== null) {
-                                  if (days < 0) {
-                                    return <div className="text-xs text-red-500">Expired {Math.abs(days)} days ago</div>;
-                                  } else if (days === 0) {
-                                    return <div className="text-xs text-red-500">Expires today</div>;
-                                  } else if (days <= 3) {
-                                    return <div className="text-xs text-orange-500">Expires in {days} days</div>;
-                                  } else if (days <= 7) {
-                                    return <div className="text-xs text-yellow-600">Expires in {days} days</div>;
-                                  } else {
-                                    return <div className="text-xs text-green-600">{days} days left</div>;
-                                  }
-                                }
-                                return null;
-                              })()}
-                            </div>
-                          ) : (
-                            <span className="text-gray-500">N/A</span>
-                          )}
-                        </td>
-                        <td className="py-2 px-4 border-b text-sm">
-                          <span className={`px-2 py-1 rounded-full text-xs ${
-                            item.status === 'active' ? 'bg-green-100 text-green-800' :
-                            item.status === 'low_stock' ? 'bg-yellow-100 text-yellow-800' :
-                            item.status === 'out_of_stock' ? 'bg-red-100 text-red-800' :
-                            item.status === 'expired' ? 'bg-red-100 text-red-800' :
-                            'bg-gray-100 text-gray-800'
-                          }`}>
-                            {item.status?.replace('_', ' ')}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                {items.map((item) => (
+                  <div
+                    key={item._id}
+                    className="bg-white border border-gray-200 rounded-lg shadow-md hover:shadow-lg transition-shadow overflow-hidden"
+                  >
+                    {/* Item Image */}
+                    <div className="w-full h-48 bg-gray-100 flex items-center justify-center overflow-hidden">
+                      {item.image ? (
+                        <img
+                          src={item.image}
+                          alt={item.name}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div className="text-gray-400 text-4xl">
+                          <svg
+                            className="w-24 h-24"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+                            />
+                          </svg>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Item Details */}
+                    <div className="p-4">
+                      <h3 className="text-lg font-semibold text-gray-800 mb-3">{item.name}</h3>
+                      
+                      <div className="space-y-2 text-sm">
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Category:</span>
+                          <span className="text-gray-800 font-medium capitalize">{item.category}</span>
+                        </div>
+                        
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Unit:</span>
+                          <span className="text-gray-800 font-medium">{item.unit}</span>
+                        </div>
+                        
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Storage:</span>
+                          <span className="text-gray-800 font-medium capitalize">
+                            {item.storageCondition?.replace(/_/g, ' ')}
                           </span>
-                        </td>
-                        <td className="py-2 px-4 border-b text-sm text-gray-800">{item.addedBy?.fullname || 'Unknown'}</td>
-                        <td className="py-2 px-4 border-b text-sm">
-                          <button
-                            onClick={() => startUpdate(item)}
-                            className="text-blue-600 hover:underline mr-2"
-                            disabled={loading}
-                          >
-                            Update
-                          </button>
-                          <button
-                            onClick={() => handleRemoveItem(item._id)}
-                            className="text-red-600 hover:underline"
-                            disabled={loading}
-                          >
-                            Remove
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                        </div>
+                        
+                        {item.minThreshold !== undefined && item.minThreshold !== null && item.minThreshold !== '' && (
+                          <div className="flex justify-between">
+                            <span className="text-gray-600">Min Threshold:</span>
+                            <span className="text-gray-800 font-medium">{item.minThreshold} {item.unit}</span>
+                          </div>
+                        )}
+                        
+                        {item.maxThreshold !== undefined && item.maxThreshold !== null && item.maxThreshold !== '' && (
+                          <div className="flex justify-between">
+                            <span className="text-gray-600">Max Threshold:</span>
+                            <span className="text-gray-800 font-medium">{item.maxThreshold} {item.unit}</span>
+                          </div>
+                        )}
+                        
+                        {item.notes && (
+                          <div className="mt-3 pt-3 border-t border-gray-200">
+                            <span className="text-gray-600 block mb-1">Notes:</span>
+                            <p className="text-gray-800 text-xs line-clamp-3">{item.notes}</p>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Action Buttons */}
+                      <div className="mt-4 flex gap-2 pt-4 border-t border-gray-200">
+                        <button
+                          onClick={() => startUpdate(item)}
+                          className="flex-1 px-3 py-2 bg-blue-500 text-white text-sm rounded hover:bg-blue-600 transition-colors disabled:opacity-50"
+                          disabled={loading}
+                        >
+                          Update
+                        </button>
+                        <button
+                          onClick={() => handleRemoveItem(item._id)}
+                          className="flex-1 px-3 py-2 bg-red-500 text-white text-sm rounded hover:bg-red-600 transition-colors disabled:opacity-50"
+                          disabled={loading}
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
           </div>
@@ -777,7 +1234,7 @@ const InventoryManagement = () => {
           {/* Add Item Form */}
           {showAddForm && (
             <div className="bg-white p-6 rounded-lg shadow-md mb-6">
-              <h2 className="text-lg font-semibold mb-4">Add New Item</h2>
+              <h2 className="text-lg font-semibold mb-4">Add New Item to General Inventory</h2>
               <form onSubmit={handleAddItem}>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
@@ -793,25 +1250,13 @@ const InventoryManagement = () => {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Quantity *</label>
-                    <input
-                      type="number"
-                      name="quantity"
-                      value={formData.quantity}
-                      onChange={handleInputChange}
-                      placeholder="Quantity"
-                      className="p-2 border border-gray-300 rounded w-full"
-                      min="0"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Unit</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Unit *</label>
                     <select
                       name="unit"
                       value={formData.unit}
                       onChange={handleInputChange}
                       className="p-2 border border-gray-300 rounded w-full"
+                      required
                     >
                       <option value="pcs">pcs</option>
                       <option value="kg">kg</option>
@@ -820,6 +1265,23 @@ const InventoryManagement = () => {
                       <option value="ml">ml</option>
                       <option value="lb">lb</option>
                       <option value="oz">oz</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Storage *</label>
+                    <select
+                      name="storageCondition"
+                      value={formData.storageCondition}
+                      onChange={handleInputChange}
+                      className="p-2 border border-gray-300 rounded w-full"
+                      required
+                    >
+                      <option value="fridge">Fridge</option>
+                      <option value="freezer">Freezer</option>
+                      <option value="normal_temperature">Normal Temperature</option>
+                      <option value="room_temperature">Room Temperature</option>
+                      <option value="pantry">Pantry</option>
+                      <option value="dry_storage">Dry Storage</option>
                     </select>
                   </div>
                   <div>
@@ -843,86 +1305,6 @@ const InventoryManagement = () => {
                       <option value="canned">Canned</option>
                       <option value="other">Other</option>
                     </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Storage Condition *</label>
-                    <select
-                      name="storageCondition"
-                      value={formData.storageCondition}
-                      onChange={handleInputChange}
-                      className="p-2 border border-gray-300 rounded w-full"
-                      required
-                    >
-                      <option value="fridge">Fridge</option>
-                      <option value="freezer">Freezer</option>
-                      <option value="normal_temperature">Normal Temperature</option>
-                      <option value="room_temperature">Room Temperature</option>
-                      <option value="pantry">Pantry</option>
-                      <option value="dry_storage">Dry Storage</option>
-                    </select>
-                  </div>
-                  
-                  {/* Freshness Selection - only show for categories that support it */}
-                  {!requiresManualExpiryDate(formData.category) && (
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Freshness Level</label>
-                      <select
-                        name="freshness"
-                        value={formData.freshness}
-                        onChange={handleInputChange}
-                        className="p-2 border border-gray-300 rounded w-full"
-                      >
-                        {getFreshnessOptions(formData.category).map((option) => (
-                          <option key={option.value} value={option.value}>
-                            {option.label}
-                          </option>
-                        ))}
-                      </select>
-                      <p className="text-xs text-gray-500 mt-1">
-                        {getExpiryDateDescription(formData.category)}
-                      </p>
-                    </div>
-                  )}
-                  
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Expiry Date {requiresManualExpiryDate(formData.category) ? '*' : ''}
-                    </label>
-                    <input
-                      type="date"
-                      name="expiryDate"
-                      value={formData.expiryDate}
-                      onChange={handleInputChange}
-                      className="p-2 border border-gray-300 rounded w-full"
-                      required={requiresManualExpiryDate(formData.category)}
-                    />
-                    <p className="text-xs text-gray-500 mt-1">
-                      {getExpiryDateDescription(formData.category)}
-                    </p>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Supplier</label>
-                    <input
-                      type="text"
-                      name="supplier"
-                      value={formData.supplier}
-                      onChange={handleInputChange}
-                      placeholder="Supplier Name"
-                      className="p-2 border border-gray-300 rounded w-full"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Cost</label>
-                    <input
-                      type="number"
-                      name="cost"
-                      value={formData.cost}
-                      onChange={handleInputChange}
-                      placeholder="Cost per unit"
-                      className="p-2 border border-gray-300 rounded w-full"
-                      min="0"
-                      step="0.01"
-                    />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Min Threshold</label>
@@ -960,7 +1342,7 @@ const InventoryManagement = () => {
                     />
                   </div>
                   <div className="md:col-span-2">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Image</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Photo</label>
                     <input
                       type="file"
                       name="image"
@@ -968,6 +1350,7 @@ const InventoryManagement = () => {
                       accept="image/*"
                       className="p-2 border border-gray-300 rounded w-full"
                     />
+                    <p className="text-xs text-gray-500 mt-1">Upload an image for this item (optional)</p>
                   </div>
                 </div>
                 <div className="mt-4 flex space-x-2">
@@ -1010,25 +1393,13 @@ const InventoryManagement = () => {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Quantity *</label>
-                    <input
-                      type="number"
-                      name="quantity"
-                      value={formData.quantity}
-                      onChange={handleInputChange}
-                      placeholder="Quantity"
-                      className="p-2 border border-gray-300 rounded w-full"
-                      min="0"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Unit</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Unit *</label>
                     <select
                       name="unit"
                       value={formData.unit}
                       onChange={handleInputChange}
                       className="p-2 border border-gray-300 rounded w-full"
+                      required
                     >
                       <option value="pcs">pcs</option>
                       <option value="kg">kg</option>
@@ -1037,6 +1408,23 @@ const InventoryManagement = () => {
                       <option value="ml">ml</option>
                       <option value="lb">lb</option>
                       <option value="oz">oz</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Storage *</label>
+                    <select
+                      name="storageCondition"
+                      value={formData.storageCondition}
+                      onChange={handleInputChange}
+                      className="p-2 border border-gray-300 rounded w-full"
+                      required
+                    >
+                      <option value="fridge">Fridge</option>
+                      <option value="freezer">Freezer</option>
+                      <option value="normal_temperature">Normal Temperature</option>
+                      <option value="room_temperature">Room Temperature</option>
+                      <option value="pantry">Pantry</option>
+                      <option value="dry_storage">Dry Storage</option>
                     </select>
                   </div>
                   <div>
@@ -1060,86 +1448,6 @@ const InventoryManagement = () => {
                       <option value="canned">Canned</option>
                       <option value="other">Other</option>
                     </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Storage Condition *</label>
-                    <select
-                      name="storageCondition"
-                      value={formData.storageCondition}
-                      onChange={handleInputChange}
-                      className="p-2 border border-gray-300 rounded w-full"
-                      required
-                    >
-                      <option value="fridge">Fridge</option>
-                      <option value="freezer">Freezer</option>
-                      <option value="normal_temperature">Normal Temperature</option>
-                      <option value="room_temperature">Room Temperature</option>
-                      <option value="pantry">Pantry</option>
-                      <option value="dry_storage">Dry Storage</option>
-                    </select>
-                  </div>
-                  
-                  {/* Freshness Selection - only show for categories that support it */}
-                  {!requiresManualExpiryDate(formData.category) && (
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Freshness Level</label>
-                      <select
-                        name="freshness"
-                        value={formData.freshness}
-                        onChange={handleInputChange}
-                        className="p-2 border border-gray-300 rounded w-full"
-                      >
-                        {getFreshnessOptions(formData.category).map((option) => (
-                          <option key={option.value} value={option.value}>
-                            {option.label}
-                          </option>
-                        ))}
-                      </select>
-                      <p className="text-xs text-gray-500 mt-1">
-                        {getExpiryDateDescription(formData.category)}
-                      </p>
-                    </div>
-                  )}
-                  
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Expiry Date {requiresManualExpiryDate(formData.category) ? '*' : ''}
-                    </label>
-                    <input
-                      type="date"
-                      name="expiryDate"
-                      value={formData.expiryDate}
-                      onChange={handleInputChange}
-                      className="p-2 border border-gray-300 rounded w-full"
-                      required={requiresManualExpiryDate(formData.category)}
-                    />
-                    <p className="text-xs text-gray-500 mt-1">
-                      {getExpiryDateDescription(formData.category)}
-                    </p>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Supplier</label>
-                    <input
-                      type="text"
-                      name="supplier"
-                      value={formData.supplier}
-                      onChange={handleInputChange}
-                      placeholder="Supplier Name"
-                      className="p-2 border border-gray-300 rounded w-full"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Cost</label>
-                    <input
-                      type="number"
-                      name="cost"
-                      value={formData.cost}
-                      onChange={handleInputChange}
-                      placeholder="Cost per unit"
-                      className="p-2 border border-gray-300 rounded w-full"
-                      min="0"
-                      step="0.01"
-                    />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Min Threshold</label>
@@ -1177,7 +1485,17 @@ const InventoryManagement = () => {
                     />
                   </div>
                   <div className="md:col-span-2">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Image</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Photo</label>
+                    {editingItem?.image && (
+                      <div className="mb-2">
+                        <p className="text-sm text-gray-600 mb-2">Current photo:</p>
+                        <img 
+                          src={editingItem.image} 
+                          alt={editingItem.name}
+                          className="w-32 h-32 object-cover rounded border border-gray-300"
+                        />
+                      </div>
+                    )}
                     <input
                       type="file"
                       name="image"
@@ -1185,9 +1503,7 @@ const InventoryManagement = () => {
                       accept="image/*"
                       className="p-2 border border-gray-300 rounded w-full"
                     />
-                    {editingItem?.image && (
-                      <p className="text-sm text-gray-500 mt-1">Current image: {editingItem.image}</p>
-                    )}
+                    <p className="text-xs text-gray-500 mt-1">Upload a new image to replace the current one (optional)</p>
                   </div>
                 </div>
                 <div className="mt-4 flex space-x-2">

@@ -424,9 +424,27 @@ export const WasteAPI = {
     return http(`/waste/stats${queryParams ? `?${queryParams}` : ''}`);
   },
 
+  // Get expired items for analytics
+  getExpiredItems(params = {}) {
+    const queryParams = new URLSearchParams(params).toString();
+    return http(`/waste/expired${queryParams ? `?${queryParams}` : ''}`);
+  },
+
   // Process expired items and log them as waste
   processExpiredItems() {
     return http("/waste/process-expired", { method: "POST" });
+  },
+
+  // Get all waste predictions
+  getAllWastePredictions(params = {}) {
+    const queryParams = new URLSearchParams(params).toString();
+    return http(`/waste/predictions${queryParams ? `?${queryParams}` : ''}`);
+  },
+
+  // Get waste prediction statistics
+  getWastePredictionStats(params = {}) {
+    const queryParams = new URLSearchParams(params).toString();
+    return http(`/waste/predictions/stats${queryParams ? `?${queryParams}` : ''}`);
   }
 };
 

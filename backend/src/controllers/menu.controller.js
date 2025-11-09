@@ -397,10 +397,16 @@ const createRecipeRecommendation = asyncHandler(async (req, res) => {
 // Get available ingredients for menu/recipe creation
 const getAvailableIngredients = asyncHandler(async (req, res) => {
     const { category, search } = req.query;
+    const now = new Date();
     
-    // Build filter object
+    // Build filter object - exclude expired items and items with no stock
     const filter = {
-        currentStock: { $gt: 0 } // Only ingredients with stock > 0
+        currentStock: { $gt: 0 }, // Only ingredients with stock > 0
+        status: { $ne: 'expired' }, // Exclude items marked as expired
+        $or: [
+            { expiryDate: { $exists: false } }, // Items without expiry date
+            { expiryDate: { $gte: now } } // Items that haven't expired yet
+        ]
     };
     
     if (category) {
@@ -412,7 +418,7 @@ const getAvailableIngredients = asyncHandler(async (req, res) => {
     }
 
     const ingredients = await InventoryItem.find(filter)
-        .select('name category unit currentStock')
+        .select('name category unit currentStock expiryDate status')
         .sort({ name: 1 });
 
     return res.status(200).json(

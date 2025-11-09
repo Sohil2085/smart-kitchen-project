@@ -48,9 +48,18 @@ const MenuManagement = () => {
 
       setMenuItems(menuResponse.data.docs || menuResponse.data || []);
 
-      // Filter inventory items that have stock > 0, or show all if none have stock
+      // Filter inventory items that have stock > 0 and are not expired
       const inventoryItems = ingredientsResponse.data.docs || ingredientsResponse.data || [];
-      const availableItems = inventoryItems.filter(item => item.currentStock > 0);
+      const now = new Date();
+      const availableItems = inventoryItems.filter(item => {
+        // Must have stock > 0
+        if (item.currentStock <= 0) return false;
+        
+        // Must not have passed expiry date (only check actual expiry date, not status field)
+        if (item.expiryDate && new Date(item.expiryDate) < now) return false;
+        
+        return true;
+      });
 
       // If no items have stock, show all items so users can still create recipes
       const finalItems = availableItems.length > 0 ? availableItems : inventoryItems;
@@ -198,11 +207,8 @@ const MenuManagement = () => {
       const availableIngredient = availableIngredients.find(ing => ing._id === ingId);
       if (!availableIngredient) return false;
       
-      // Check if ingredient is expired
+      // Check if ingredient is expired (only check actual expiry date, not status field)
       if (availableIngredient.expiryDate && new Date(availableIngredient.expiryDate) < now) {
-        return false;
-      }
-      if (availableIngredient.status === 'expired') {
         return false;
       }
       
@@ -356,9 +362,9 @@ const MenuManagement = () => {
                       ? availableIngredients.find(ai => ai._id === ingId)
                       : null;
                     const now = new Date();
+                    // Only check actual expiry date, not status field (status might be incorrectly set)
                     const isExpired = availableIngredient && (
-                      (availableIngredient.expiryDate && new Date(availableIngredient.expiryDate) < now) ||
-                      availableIngredient.status === 'expired'
+                      availableIngredient.expiryDate && new Date(availableIngredient.expiryDate) < now
                     );
                     const isAvailable = availableIngredient && !isExpired && availableIngredient.currentStock >= (ing.quantity ?? 0);
                     return (
