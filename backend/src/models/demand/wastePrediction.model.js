@@ -17,7 +17,7 @@ const wastePredictionSchema = new mongoose.Schema(
     },
     predictionModel: {
       type: String,
-      enum: ["Regression", "TimeSeries", "LSTM", "Prophet", "Custom", "Expired"],
+      enum: ["Regression", "TimeSeries", "LSTM", "Prophet", "Custom"],
       default: "Regression",
     },
     confidenceScore: {

@@ -6,7 +6,6 @@ import Dashboard from "./Dashboard";
 import OrderManagement from "./OrderManagement";
 import MenuManagement from "./MenuManagement";
 import ReportAnalysis from "./ReportAnalysis";
-import WastePrediction from "./WastePrediction";
 import Sidebar from "../components/Sidebar";
 
 function Home() {
@@ -58,7 +57,14 @@ function Home() {
           </div>
         );
       case "waste":
-        return <WastePrediction />;
+        return (
+          <div>
+            <h2 className="text-2xl font-semibold mb-4">Waste Prediction</h2>
+            <div className="bg-white p-6 rounded-lg shadow">
+              <p className="text-gray-600">Waste prediction features will be displayed here.</p>
+            </div>
+          </div>
+        );
       case "reports":
         return <ReportAnalysis />;
       case "employees":

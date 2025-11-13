@@ -23,7 +23,7 @@ const wasteLogSchema = new mongoose.Schema({
     capturedImageUrl: String,   // Image of the wasted food for analysis
     loggedBy: {
         type: mongoose.Schema.Types.ObjectId,
-        ref: 'User' // User who logged the waste
+        ref: 'Signup' // User who logged the waste
     },
     loggedAt: {
         type: Date,

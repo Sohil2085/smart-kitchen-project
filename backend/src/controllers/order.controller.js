@@ -7,7 +7,6 @@ import { InventoryItem } from "../models/inventory/inventoryItem.model.js";
 import { Inventorylog } from "../models/inventory/inventorylog.model.js";
 import { Sales } from "../models/demand/salesData.model.js";
 import { checkIngredientAvailability } from "../utils/stockChecker.js";
-import { deductFromDailyInventory } from "./dailyInventory.controller.js";
 
 // Create new order
 const createOrder = asyncHandler(async (req, res) => {
@@ -61,8 +60,8 @@ const createOrder = asyncHandler(async (req, res) => {
             throw new apiError(`Menu item "${menuItem.name}" has no ingredients configured`, 400);
         }
 
-        // Check ingredient availability using the stock checker utility (with item mapping for alternatives)
-        const stockCheck = await checkIngredientAvailability(menuItem.ingredients, orderItem.quantity, true);
+        // Check ingredient availability using the stock checker utility
+        const stockCheck = await checkIngredientAvailability(menuItem.ingredients, orderItem.quantity);
         
         if (!stockCheck.isAvailable) {
             const missingIngredientsList = stockCheck.missingIngredients
@@ -71,9 +70,6 @@ const createOrder = asyncHandler(async (req, res) => {
             
             throw new apiError(`Dish "${menuItem.name}" is out of stock. Missing ingredients: ${missingIngredientsList}`, 400);
         }
-        
-        // Store the item mapping for this menu item to use when deducting inventory
-        orderItem.itemMapping = stockCheck.itemMapping || {};
 
         const totalPrice = orderItem.quantity * orderItem.unitPrice;
         subtotal += totalPrice;
@@ -119,39 +115,57 @@ const createOrder = asyncHandler(async (req, res) => {
 
             // Deduct ingredients from inventory
             if (menuItem.ingredients && Array.isArray(menuItem.ingredients) && menuItem.ingredients.length > 0) {
-                // Get the item mapping for this menu item (which includes alternative items)
-                const itemMapping = orderItem.itemMapping || {};
-                
                 for (const ingredient of menuItem.ingredients) {
                     if (!ingredient || !ingredient.ingredient) {
                         console.error(`Invalid ingredient reference in menu item ${menuItem.name}`);
                         continue;
                     }
 
-                    const originalIngredientId = ingredient.ingredient._id || ingredient.ingredient;
-                    if (!originalIngredientId) {
+                    const ingredientId = ingredient.ingredient._id || ingredient.ingredient;
+                    if (!ingredientId) {
                         console.error(`Missing ingredient ID in menu item ${menuItem.name}`);
                         continue;
                     }
 
-                    // Use the actual item ID from mapping (which may be an alternative) or fall back to original
-                    const actualIngredientId = itemMapping[originalIngredientId.toString()] || originalIngredientId;
                     const requiredQuantity = ingredient.quantity * orderItem.quantity;
                     
                     try {
-                        // Deduct from daily inventory (this also updates main inventory)
-                        // The deductFromDailyInventory function will check stock availability
-                        await deductFromDailyInventory(actualIngredientId, requiredQuantity, req.user._id);
+                        // Get current inventory item to check stock
+                        const inventoryItem = await InventoryItem.findById(ingredientId);
+                        if (!inventoryItem) {
+                            console.error(`Inventory item ${ingredientId} not found`);
+                            continue;
+                        }
+
+                        // Check if sufficient stock is available
+                        if (inventoryItem.currentStock < requiredQuantity) {
+                            throw new apiError(
+                                `Insufficient stock for ${inventoryItem.name}. Available: ${inventoryItem.currentStock}, Required: ${requiredQuantity}`,
+                                400
+                            );
+                        }
+
+                        // Deduct from inventory (prevent negative values)
+                        const newStock = Math.max(0, inventoryItem.currentStock - requiredQuantity);
+                        await InventoryItem.findByIdAndUpdate(
+                            ingredientId,
+                            { 
+                                currentStock: newStock,
+                                quantity: newStock, // Also update quantity to match currentStock
+                                lastUpdatedBy: req.user._id
+                            },
+                            { new: true }
+                        );
 
                         // Create inventory log entry
                         await Inventorylog.create({
-                            ingredient: actualIngredientId,
+                            ingredient: ingredientId,
                             change: -requiredQuantity,
-                            reason: `Used in order for ${menuItem.name}${actualIngredientId.toString() !== originalIngredientId.toString() ? ' (alternative item used)' : ''}`,
+                            reason: `Used in order for ${menuItem.name}`,
                             date: new Date()
                         });
                     } catch (error) {
-                        console.error(`Error updating inventory for ingredient ${actualIngredientId}:`, error);
+                        console.error(`Error updating inventory for ingredient ${ingredientId}:`, error);
                         // If it's an apiError, throw it; otherwise continue
                         if (error instanceof apiError) {
                             throw error;
@@ -449,8 +463,8 @@ const updateOrder = asyncHandler(async (req, res) => {
                 throw new apiError(`Menu item with ID ${orderItem.menuItem} not found`, 400);
             }
 
-            // Check ingredient availability (with item mapping for alternatives)
-            const stockCheck = await checkIngredientAvailability(menuItem.ingredients, orderItem.quantity, true);
+            // Check ingredient availability
+            const stockCheck = await checkIngredientAvailability(menuItem.ingredients, orderItem.quantity);
             
             if (!stockCheck.isAvailable) {
                 const missingIngredientsList = stockCheck.missingIngredients
@@ -463,43 +477,24 @@ const updateOrder = asyncHandler(async (req, res) => {
             const totalPrice = orderItem.quantity * orderItem.unitPrice;
             subtotal += totalPrice;
 
-            const validatedItem = {
+            validatedItems.push({
                 menuItem: orderItem.menuItem,
                 quantity: orderItem.quantity,
                 unitPrice: orderItem.unitPrice,
                 totalPrice: totalPrice
-            };
-            
-            // Store the item mapping for this menu item to use when deducting inventory
-            validatedItem.itemMapping = stockCheck.itemMapping || {};
-            validatedItems.push(validatedItem);
+            });
 
-            // Deduct ingredients from inventory using the item mapping
-            const itemMapping = stockCheck.itemMapping || {};
+            // Deduct ingredients from inventory
             for (const ingredient of menuItem.ingredients) {
-                const originalIngredientId = ingredient.ingredient._id || ingredient.ingredient;
-                // Use the actual item ID from mapping (which may be an alternative) or fall back to original
-                const actualIngredientId = itemMapping[originalIngredientId.toString()] || originalIngredientId;
                 const requiredQuantity = ingredient.quantity * orderItem.quantity;
                 
-                // Deduct from daily inventory (this also updates main inventory)
-                try {
-                    await deductFromDailyInventory(actualIngredientId, requiredQuantity, req.user._id);
-                    
-                    // Create inventory log entry
-                    await Inventorylog.create({
-                        ingredient: actualIngredientId,
-                        change: -requiredQuantity,
-                        reason: `Used in order update for ${menuItem.name}${actualIngredientId.toString() !== originalIngredientId.toString() ? ' (alternative item used)' : ''}`,
-                        date: new Date()
-                    });
-                } catch (error) {
-                    console.error(`Error deducting from daily inventory for ingredient ${actualIngredientId}:`, error);
-                    // If it's an apiError, throw it
-                    if (error instanceof apiError) {
-                        throw error;
+                await InventoryItem.findByIdAndUpdate(
+                    ingredient.ingredient._id,
+                    { 
+                        $inc: { currentStock: -requiredQuantity },
+                        lastUpdatedBy: req.user._id
                     }
-                }
+                );
             }
         }
 
