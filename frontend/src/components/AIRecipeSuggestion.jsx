@@ -103,8 +103,19 @@ const AIRecipeSuggestion = () => {
           }
         } catch (error) {
           console.error(`Error generating recipe for ${ingredient.name}:`, error);
-          const errorMessage = error.response?.data?.message || error.message || "Unknown error";
+          console.error("Error response:", error.response?.data);
+          console.error("Error status:", error.response?.status);
+          
+          // Extract detailed error message
+          let errorMessage = "Unknown error";
+          if (error.response?.data) {
+            errorMessage = error.response.data.message || error.response.data.error || JSON.stringify(error.response.data);
+          } else if (error.message) {
+            errorMessage = error.message;
+          }
+          
           toast.error(`Failed to generate recipe for ${ingredient.name}: ${errorMessage}`);
+          skippedIngredients.push({ name: ingredient.name, error: errorMessage });
         }
       }
       
