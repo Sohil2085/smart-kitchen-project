@@ -6,7 +6,9 @@ import {
     endDay,
     startNewDay,
     getDayStatus,
-    getAvailableItemsForToday
+    getAvailableItemsForToday,
+    getPreviousDayRemainingItems,
+    addPreviousDayRemainingItems
 } from "../controllers/dailyInventory.controller.js";
 import { verifyAdminOrChef, verifyChef } from "../middleware/auth.middleware.js";
 
@@ -27,8 +29,14 @@ router.route("/day-status").get(getDayStatus);
 // Get available items (generalized inventory items)
 router.route("/available-items").get(getAvailableItemsForToday);
 
+// Get previous day's remaining items
+router.route("/previous-day-remaining").get(getPreviousDayRemainingItems);
+
 // Add item to today's inventory (requires chef role)
 router.route("/add-item").post(verifyChef, addItemToToday);
+
+// Add remaining items from previous day (requires chef role)
+router.route("/add-previous-day-remaining").post(verifyChef, addPreviousDayRemainingItems);
 
 // End the day (requires chef role)
 router.route("/end-day").post(verifyChef, endDay);

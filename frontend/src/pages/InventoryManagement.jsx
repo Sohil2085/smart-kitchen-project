@@ -54,6 +54,8 @@ const InventoryManagement = () => {
   const [loadingExpired, setLoadingExpired] = useState(false);
   const [loadingDaily, setLoadingDaily] = useState(false);
   const [todayDate, setTodayDate] = useState('');
+  const [previousDayRemainingItems, setPreviousDayRemainingItems] = useState([]);
+  const [loadingPreviousDay, setLoadingPreviousDay] = useState(false);
 
   useEffect(() => {
     const today = new Date();
@@ -62,6 +64,7 @@ const InventoryManagement = () => {
     fetchTodayInventory();
     fetchDayStatus();
     fetchAvailableItems();
+    fetchPreviousDayRemainingItems();
   }, []);
 
   const fetchItems = async () => {
@@ -104,6 +107,43 @@ const InventoryManagement = () => {
       setAvailableItems(response.data || []);
     } catch (error) {
       console.error('Failed to fetch available items:', error);
+    }
+  };
+
+  const fetchPreviousDayRemainingItems = async () => {
+    try {
+      setLoadingPreviousDay(true);
+      const response = await DailyInventoryAPI.getPreviousDayRemainingItems();
+      setPreviousDayRemainingItems(response.data?.items || []);
+    } catch (error) {
+      // It's okay if there are no previous day items, so we don't show an error
+      setPreviousDayRemainingItems([]);
+    } finally {
+      setLoadingPreviousDay(false);
+    }
+  };
+
+  const handleAddPreviousDayRemainingItems = async () => {
+    if (previousDayRemainingItems.length === 0) {
+      toast.info('No remaining items from previous day to add');
+      return;
+    }
+
+    if (!window.confirm(`Add ${previousDayRemainingItems.length} remaining item(s) from previous day to today's inventory?`)) {
+      return;
+    }
+
+    try {
+      setLoadingDaily(true);
+      const response = await DailyInventoryAPI.addPreviousDayRemainingItems();
+      toast.success(`Successfully added ${response.data.addedCount} item(s) from previous day. ${response.data.skippedCount} item(s) skipped (expired).`);
+      fetchTodayInventory();
+      fetchPreviousDayRemainingItems();
+      fetchAvailableItems();
+    } catch (error) {
+      toast.error('Failed to add previous day items: ' + error.message);
+    } finally {
+      setLoadingDaily(false);
     }
   };
 
@@ -310,6 +350,7 @@ const InventoryManagement = () => {
       toast.success('Day ended successfully');
       fetchDayStatus();
       fetchTodayInventory();
+      fetchPreviousDayRemainingItems();
     } catch (error) {
       toast.error('Failed to end day: ' + error.message);
     } finally {
@@ -328,6 +369,7 @@ const InventoryManagement = () => {
       toast.success(`New day started! ${response.data.carriedForwardCount} items carried forward from yesterday.`);
       fetchDayStatus();
       fetchTodayInventory();
+      fetchPreviousDayRemainingItems();
     } catch (error) {
       toast.error('Failed to start new day: ' + error.message);
     } finally {
@@ -489,7 +531,50 @@ const InventoryManagement = () => {
       {/* Daily Inventory Section */}
       {showDailyInventory && (
         <div className="mb-8">
-          <h2 className="text-xl font-semibold mb-4 text-gray-700">Today's Inventory</h2>
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-xl font-semibold text-gray-700">Today's Inventory</h2>
+            {previousDayRemainingItems.length > 0 && !dayStatus.isDayEnded && (
+              <button
+                onClick={handleAddPreviousDayRemainingItems}
+                className="px-4 py-2 bg-purple-500 text-white rounded hover:bg-purple-600 disabled:opacity-50 flex items-center space-x-2"
+                disabled={loadingDaily || loadingPreviousDay}
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                <span>Add Remaining Items from Previous Day ({previousDayRemainingItems.length})</span>
+              </button>
+            )}
+          </div>
+
+          {/* Previous Day Remaining Items Info */}
+          {previousDayRemainingItems.length > 0 && (
+            <div className="mb-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+              <div className="flex justify-between items-center">
+                <div>
+                  <h3 className="text-sm font-semibold text-yellow-800 mb-1">
+                    Previous Day Remaining Items ({previousDayRemainingItems.length})
+                  </h3>
+                  <p className="text-xs text-yellow-700">
+                    You have {previousDayRemainingItems.length} item(s) with remaining quantity from the previous day.
+                    Click the button above to add them to today's inventory.
+                  </p>
+                </div>
+              </div>
+              <div className="mt-2 text-xs text-yellow-600">
+                <ul className="list-disc list-inside space-y-1">
+                  {previousDayRemainingItems.slice(0, 5).map((item, index) => (
+                    <li key={index}>
+                      {item.itemName}: {item.quantity} {item.unit}
+                    </li>
+                  ))}
+                  {previousDayRemainingItems.length > 5 && (
+                    <li>... and {previousDayRemainingItems.length - 5} more</li>
+                  )}
+                </ul>
+              </div>
+            </div>
+          )}
           
           {/* Add Item to Today Form */}
           {!dayStatus.isDayEnded && (

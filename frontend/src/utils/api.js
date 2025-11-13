@@ -469,9 +469,19 @@ export const DailyInventoryAPI = {
     return http("/daily-inventory/available-items");
   },
 
+  // Get previous day's remaining items
+  getPreviousDayRemainingItems() {
+    return http("/daily-inventory/previous-day-remaining");
+  },
+
   // Add item to today's inventory
   addItemToToday(itemData) {
     return http("/daily-inventory/add-item", { method: "POST", body: itemData });
+  },
+
+  // Add remaining items from previous day to today
+  addPreviousDayRemainingItems() {
+    return http("/daily-inventory/add-previous-day-remaining", { method: "POST" });
   },
 
   // End the day
