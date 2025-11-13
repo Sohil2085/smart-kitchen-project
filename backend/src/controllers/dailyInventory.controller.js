@@ -338,6 +338,149 @@ const getAvailableItemsForToday = asyncHandler(async (req, res) => {
     );
 });
 
+// Get previous day's remaining items
+const getPreviousDayRemainingItems = asyncHandler(async (req, res) => {
+    const today = getTodayDate();
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    yesterday.setHours(0, 0, 0, 0);
+
+    // Get yesterday's entries with remaining quantity
+    const yesterdayEntries = await DailyInventoryEntry.find({
+        date: yesterday,
+        remainingQuantity: { $gt: 0 }
+    })
+    .populate('inventoryItem')
+    .sort({ createdAt: -1 });
+
+    const now = new Date();
+    const remainingItems = [];
+
+    // Filter out expired items and format response
+    for (const entry of yesterdayEntries) {
+        // Check if expired
+        if (entry.expiryDate && new Date(entry.expiryDate) < now) {
+            continue; // Skip expired items
+        }
+
+        remainingItems.push({
+            entryId: entry._id,
+            inventoryItemId: entry.inventoryItem._id,
+            itemName: entry.inventoryItem.name,
+            quantity: entry.remainingQuantity,
+            unit: entry.inventoryItem.unit,
+            cost: entry.cost,
+            expiryDate: entry.expiryDate,
+            category: entry.inventoryItem.category,
+            storageCondition: entry.inventoryItem.storageCondition
+        });
+    }
+
+    return res.status(200).json(
+        new apiResponse(200, {
+            date: formatDate(yesterday),
+            items: remainingItems,
+            count: remainingItems.length
+        }, "Previous day's remaining items retrieved successfully")
+    );
+});
+
+// Manually add remaining items from previous day to today
+const addPreviousDayRemainingItems = asyncHandler(async (req, res) => {
+    const today = getTodayDate();
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    yesterday.setHours(0, 0, 0, 0);
+
+    // Check if day is ended
+    const dayStatus = await DayStatus.findOne({ date: today });
+    if (dayStatus?.isEnded) {
+        throw new apiError("Cannot add items. The day has been ended.", 400);
+    }
+
+    // Get yesterday's entries with remaining quantity
+    const yesterdayEntries = await DailyInventoryEntry.find({
+        date: yesterday,
+        remainingQuantity: { $gt: 0 }
+    }).populate('inventoryItem');
+
+    const now = new Date();
+    const addedItems = [];
+    const skippedItems = [];
+
+    // Add non-expired items to today
+    for (const entry of yesterdayEntries) {
+        // Check if expired
+        if (entry.expiryDate && new Date(entry.expiryDate) < now) {
+            skippedItems.push({
+                itemName: entry.inventoryItem.name,
+                reason: 'Expired'
+            });
+            continue; // Skip expired items
+        }
+
+        // Check if this item already exists in today's inventory with same expiry date
+        // Match by inventory item and expiry date (or both null)
+        const existingEntryQuery = {
+            date: today,
+            inventoryItem: entry.inventoryItem._id
+        };
+        
+        // Match expiry date if provided, otherwise match entries with no expiry date
+        if (entry.expiryDate) {
+            existingEntryQuery.expiryDate = entry.expiryDate;
+        } else {
+            existingEntryQuery.$or = [
+                { expiryDate: null },
+                { expiryDate: { $exists: false } }
+            ];
+        }
+        
+        const existingEntry = await DailyInventoryEntry.findOne(existingEntryQuery);
+
+        if (existingEntry) {
+            // Update existing entry by adding remaining quantity
+            existingEntry.quantity += entry.remainingQuantity;
+            existingEntry.remainingQuantity += entry.remainingQuantity;
+            await existingEntry.save();
+            addedItems.push({
+                itemName: entry.inventoryItem.name,
+                quantity: entry.remainingQuantity,
+                unit: entry.inventoryItem.unit,
+                action: 'Updated existing entry'
+            });
+        } else {
+            // Create new entry for today with remaining quantity
+            const newEntry = await DailyInventoryEntry.create({
+                date: today,
+                inventoryItem: entry.inventoryItem._id,
+                quantity: entry.remainingQuantity,
+                remainingQuantity: entry.remainingQuantity,
+                cost: entry.cost,
+                expiryDate: entry.expiryDate,
+                addedBy: req.user._id
+            });
+
+            addedItems.push({
+                itemName: entry.inventoryItem.name,
+                quantity: entry.remainingQuantity,
+                unit: entry.inventoryItem.unit,
+                action: 'Added new entry'
+            });
+        }
+    }
+
+    return res.status(200).json(
+        new apiResponse(200, {
+            date: formatDate(today),
+            addedCount: addedItems.length,
+            skippedCount: skippedItems.length,
+            addedItems,
+            skippedItems
+        }, "Remaining items from previous day added successfully")
+    );
+});
+
 export {
     getTodayInventory,
     getDateInventory,
@@ -346,6 +489,8 @@ export {
     endDay,
     startNewDay,
     getDayStatus,
-    getAvailableItemsForToday
+    getAvailableItemsForToday,
+    getPreviousDayRemainingItems,
+    addPreviousDayRemainingItems
 };
 
