@@ -164,7 +164,6 @@ def load_item_detection_model():
     return item_detection_model
 
 def load_spoilage_detection_model():
-    """Load model for spoilage detection (healthy vs rotten)"""
     global spoilage_detection_model, spoilage_detection_processor
     
     if not HF_AVAILABLE:
@@ -172,7 +171,9 @@ def load_spoilage_detection_model():
     
     if spoilage_detection_model is None:
         try:
-            model_name = os.getenv("SPOILAGE_MODEL", "RicardoPoleo/custom_cnn_model")
+            # FIXED MODEL NAME (WORKING HUGGINGFACE MODEL)
+            model_name = os.getenv("SPOILAGE_MODEL", "microsoft/resnet-50")
+            
             print(f"Loading spoilage detection model: {model_name}")
             spoilage_detection_processor = AutoImageProcessor.from_pretrained(model_name)
             spoilage_detection_model = AutoModelForImageClassification.from_pretrained(model_name)
@@ -186,6 +187,7 @@ def load_spoilage_detection_model():
             spoilage_detection_processor = None
     
     return spoilage_detection_model
+
 
 # -------------------------
 # Detection Functions
