@@ -272,37 +272,43 @@ const ReportAnalysis = () => {
     );
   }
 
-  return (
-    <div className="p-8">
-      <div className="flex justify-between items-center mb-6">
-        <h2 className="text-2xl font-semibold">Report and Analysis</h2>
-        {activeTab === 'order-shift' && (
-          <div className="flex space-x-3">
-            <button
-              onClick={() => setShowOrderModal(true)}
-              className="bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600 transition-colors"
-            >
-              Take Order
-            </button>
-            <button
-              onClick={async () => {
-                try {
-                  setLoading(true);
-                  await MenuAPI.updateAllMenuItemsStockStatus();
-                  await fetchData(); // Refresh the data
-                  toast.success('Stock status updated successfully!');
-                } catch (error) {
-                  toast.error('Failed to update stock status: ' + error.message);
-                } finally {
-                  setLoading(false);
-                }
-              }}
-              className="bg-yellow-500 text-white px-4 py-2 rounded-lg hover:bg-yellow-600 transition-colors"
-            >
-              Refresh Stock Status
-            </button>
+    return (
+    <div className="min-h-screen bg-gray-50">
+      {/* Header Section */}
+      <div className="bg-white border-b border-gray-200 mb-6 -mx-6 px-6 py-4">
+        <div className="flex justify-between items-center">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Report and Analysis</h1>
+            <p className="text-sm text-gray-600 mt-1">Sales analytics, trends, and business insights</p>
           </div>
-        )}
+          {activeTab === 'order-shift' && (
+            <div className="flex space-x-3">
+              <button
+                onClick={() => setShowOrderModal(true)}
+                className="btn-primary"
+              >
+                Take Order
+              </button>
+              <button
+                onClick={async () => {
+                  try {
+                    setLoading(true);
+                    await MenuAPI.updateAllMenuItemsStockStatus();
+                    await fetchData();
+                    toast.success('Stock status updated successfully!');
+                  } catch (error) {
+                    toast.error('Failed to update stock status: ' + error.message);
+                  } finally {
+                    setLoading(false);
+                  }
+                }}
+                className="px-4 py-2 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 transition-colors"
+              >
+                Refresh Stock Status
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Tabs */}

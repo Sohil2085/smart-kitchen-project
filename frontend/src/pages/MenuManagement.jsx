@@ -248,12 +248,17 @@ const MenuManagement = () => {
     );
   }
 
-  return (
-    <div className="p-8">
-      <div className="flex justify-between items-center mb-6">
-        <h2 className="text-2xl font-semibold">Menu Management</h2>
-        <div className="flex space-x-3">
-          {/* Refresh Stock Button */}
+    return (
+    <div className="min-h-screen bg-gray-50">
+      {/* Header Section */}
+      <div className="bg-white border-b border-gray-200 mb-6 -mx-6 px-6 py-4">
+        <div className="flex justify-between items-center">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Menu Management</h1>
+            <p className="text-sm text-gray-600 mt-1">Create and manage menu items with ingredients</p>
+          </div>
+          <div className="flex space-x-3">
+            {/* Refresh Stock Button */}
           <button
             onClick={async () => {
               try {
@@ -310,6 +315,7 @@ const MenuManagement = () => {
           >
             {showAIRecipes ? "Back to Menu" : "AI Recipe Suggestion"}
           </button>
+          </div>
         </div>
       </div>
 
@@ -360,116 +366,116 @@ const MenuManagement = () => {
               <option value="other">Other</option>
             </select>
           </div>
-        </>
-      )}
 
-      {/* Menu Items Tab */}
-      {!showAIRecipes && activeTab === "menu" && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredMenuItems.map((item) => (
-            <div key={item._id} className="bg-white rounded-lg shadow-md p-6">
-              <h3 className="text-lg font-semibold mb-2">{item.name}</h3>
-              {item.description && (
-                <p className="text-gray-600 mb-3">{item.description}</p>
-              )}
-              <div className="space-y-2 mb-4">
-                <p>
-                  <span className="font-medium">Base Cost:</span> $
-                  {item.baseCost}
-                </p>
-                <p>
-                  <span className="font-medium">Suggested Price:</span> $
-                  {item.suggestedPrice}
-                </p>
-                <p>
-                  <span className="font-medium">Profit Margin:</span>{" "}
-                  {item?.profitMargin != null
-                    ? `${Number(item.profitMargin).toFixed(1)}%`
-                    : "-"}
-                </p>
-                {/* Stock Status */}
-                <div className="flex items-center space-x-2">
-                  <span className="font-medium">Status:</span>
-                  {item.stockInfo ? (
-                    <span
-                      className={`px-2 py-1 rounded-full text-xs font-medium ${
-                        item.stockInfo.stockStatus === "available"
-                          ? "bg-green-100 text-green-800"
-                          : item.stockInfo.stockStatus === "low_stock"
-                          ? "bg-yellow-100 text-yellow-800"
-                          : "bg-red-100 text-red-800"
-                      }`}
-                    >
-                      {item.stockInfo.stockStatus === "available"
-                        ? "Available"
-                        : item.stockInfo.stockStatus === "low_stock"
-                        ? "Low Stock"
-                        : "Out of Stock"}
-                    </span>
-                  ) : (
-                    <span
-                      className={`px-2 py-1 rounded-full text-xs font-medium ${
-                        canPrepareItem(item)
-                          ? "bg-green-100 text-green-800"
-                          : "bg-red-100 text-red-800"
-                      }`}
-                    >
-                      {canPrepareItem(item) ? "Available" : "Out of Stock"}
-                    </span>
+          {/* Menu Items Tab */}
+          {activeTab === "menu" && (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {filteredMenuItems.map((item) => (
+                <div key={item._id} className="bg-white rounded-lg shadow-md p-6">
+                  <h3 className="text-lg font-semibold mb-2">{item.name}</h3>
+                  {item.description && (
+                    <p className="text-gray-600 mb-3">{item.description}</p>
                   )}
-                </div>
-              </div>
-
-              <div className="mb-4">
-                <h4 className="font-medium mb-2">Ingredients:</h4>
-                <ul className="text-sm text-gray-600 space-y-1">
-                  {item.ingredients?.map((ing, index) => {
-                    const ingId = getIngId(ing);
-                    const availableIngredient = ingId
-                      ? availableIngredients.find((ai) => ai._id === ingId)
-                      : null;
-                    const isAvailable =
-                      availableIngredient &&
-                      availableIngredient.currentStock >= (ing.quantity ?? 0);
-                    return (
-                      <li
-                        key={index}
-                        className={`flex items-center justify-between ${
-                          !isAvailable ? "text-red-600" : ""
-                        }`}
-                      >
-                        <span>
-                          {getIngName(ing)}: {ing.quantity} {ing.unit}
+                  <div className="space-y-2 mb-4">
+                    <p>
+                      <span className="font-medium">Base Cost:</span> $
+                      {item.baseCost}
+                    </p>
+                    <p>
+                      <span className="font-medium">Suggested Price:</span> $
+                      {item.suggestedPrice}
+                    </p>
+                    <p>
+                      <span className="font-medium">Profit Margin:</span>{" "}
+                      {item?.profitMargin != null
+                        ? `${Number(item.profitMargin).toFixed(1)}%`
+                        : "-"}
+                    </p>
+                    {/* Stock Status */}
+                    <div className="flex items-center space-x-2">
+                      <span className="font-medium">Status:</span>
+                      {item.stockInfo ? (
+                        <span
+                          className={`px-2 py-1 rounded-full text-xs font-medium ${
+                            item.stockInfo.stockStatus === "available"
+                              ? "bg-green-100 text-green-800"
+                              : item.stockInfo.stockStatus === "low_stock"
+                              ? "bg-yellow-100 text-yellow-800"
+                              : "bg-red-100 text-red-800"
+                          }`}
+                        >
+                          {item.stockInfo.stockStatus === "available"
+                            ? "Available"
+                            : item.stockInfo.stockStatus === "low_stock"
+                            ? "Low Stock"
+                            : "Out of Stock"}
                         </span>
-                        {availableIngredient && (
-                          <span
-                            className={`text-xs px-2 py-1 rounded ${
-                              isAvailable
-                                ? "bg-green-100 text-green-800"
-                                : "bg-red-100 text-red-800"
+                      ) : (
+                        <span
+                          className={`px-2 py-1 rounded-full text-xs font-medium ${
+                            canPrepareItem(item)
+                              ? "bg-green-100 text-green-800"
+                              : "bg-red-100 text-red-800"
+                          }`}
+                        >
+                          {canPrepareItem(item) ? "Available" : "Out of Stock"}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="mb-4">
+                    <h4 className="font-medium mb-2">Ingredients:</h4>
+                    <ul className="text-sm text-gray-600 space-y-1">
+                      {item.ingredients?.map((ing, index) => {
+                        const ingId = getIngId(ing);
+                        const availableIngredient = ingId
+                          ? availableIngredients.find((ai) => ai._id === ingId)
+                          : null;
+                        const isAvailable =
+                          availableIngredient &&
+                          availableIngredient.currentStock >= (ing.quantity ?? 0);
+                        return (
+                          <li
+                            key={index}
+                            className={`flex items-center justify-between ${
+                              !isAvailable ? "text-red-600" : ""
                             }`}
                           >
-                            {availableIngredient.currentStock} {ing.unit}{" "}
-                            available
-                          </span>
-                        )}
-                      </li>
-                    );
-                  })}
-                </ul>
-              </div>
+                            <span>
+                              {getIngName(ing)}: {ing.quantity} {ing.unit}
+                            </span>
+                            {availableIngredient && (
+                              <span
+                                className={`text-xs px-2 py-1 rounded ${
+                                  isAvailable
+                                    ? "bg-green-100 text-green-800"
+                                    : "bg-red-100 text-red-800"
+                                }`}
+                              >
+                                {availableIngredient.currentStock} {ing.unit}{" "}
+                                available
+                              </span>
+                            )}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
 
-              <div className="flex space-x-2">
-                <button
-                  onClick={() => handleEditItem(item)}
-                  className="bg-blue-500 text-white px-3 py-1 rounded text-sm hover:bg-blue-600"
-                >
-                  Edit
-                </button>
-              </div>
+                  <div className="flex space-x-2">
+                    <button
+                      onClick={() => handleEditItem(item)}
+                      className="bg-blue-500 text-white px-3 py-1 rounded text-sm hover:bg-blue-600"
+                    >
+                      Edit
+                    </button>
+                  </div>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
+          )}
+        </>
       )}
 
       {/* Create Form Modal */}
