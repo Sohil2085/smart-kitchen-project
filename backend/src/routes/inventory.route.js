@@ -11,7 +11,9 @@ import {
     getItemsByCategory,
     getInventoryStats,
     exportInventoryToCSV,
-    processExpiredInventoryItems
+    processExpiredInventoryItems,
+    applyDailyIntake,
+    detectSpoilage
 } from "../controllers/inventory.controller.js";
 import { verifyAdminOrChef, verifyChef } from "../middleware/auth.middleware.js";
 import { upload } from "../middleware/multer.middleware.js";
@@ -66,5 +68,11 @@ router.route("/:id").put(
 // Delete inventory item (requires chef or admin role)
 router.route("/:id").delete(verifyChef, deleteInventoryItem);
 
+// Detect spoilage in fruits and vegetables (requires chef or admin role)
+router.route("/detect-spoilage").post(
+    verifyChef,
+    upload.single("image"),
+    detectSpoilage
+);
 
 export default router;

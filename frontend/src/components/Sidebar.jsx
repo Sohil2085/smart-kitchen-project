@@ -38,6 +38,7 @@ function Sidebar() {
     if (path === "/orders") return "orders";
     if (path === "/menu") return "menu";
     if (path === "/recipes") return "recipes";
+    if (path === "/spoilage") return "spoilage";
     if (path === "/waste") return "waste";
     if (path === "/reports") return "reports";
     if (path === "/employees") return "employees";
@@ -120,6 +121,16 @@ function Sidebar() {
                   }`}
                 >
                   🍽️ Menu Management
+                </Link>
+              </li>
+              <li>
+                <Link 
+                  to="/spoilage"
+                  className={`block w-full text-left px-3 py-2 rounded hover:bg-gray-100 ${
+                    activeSection === "spoilage" ? "bg-blue-100 text-blue-700 font-medium" : ""
+                  }`}
+                >
+                  🔍 Spoilage Detection
                 </Link>
               </li>
             </>
