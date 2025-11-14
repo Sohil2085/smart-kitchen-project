@@ -256,6 +256,53 @@ export const InventoryAPI = {
     });
   },
 
+  // Detect spoilage from image
+  detectSpoilage(imageFile, itemType = null) {
+    const formData = new FormData();
+    formData.append('image', imageFile);
+    if (itemType) {
+      formData.append('item_type', itemType);
+    }
+
+    // Get JWT token from localStorage
+    let token = null;
+    try {
+      token = localStorage.getItem("accessToken");
+    } catch (error) {
+      console.warn("Could not get access token:", error);
+    }
+
+    const headers = {};
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const doFetch = async (authHeaders) => fetch(`${API_BASE}/inventory/detect-spoilage`, {
+      method: "POST",
+      headers: authHeaders,
+      credentials: "include",
+      body: formData,
+    });
+
+    return doFetch(headers).then(async (res) => {
+      if (res.status === 401) {
+        try {
+          const newToken = await refreshAccessToken();
+          if (newToken) {
+            const retryHeaders = { ...(headers || {}), Authorization: `Bearer ${newToken}` };
+            res = await doFetch(retryHeaders);
+          }
+        } catch {}
+      }
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const message = data?.message || data?.error || "Spoilage detection failed";
+        throw new Error(message);
+      }
+      return data;
+    });
+  },
+
 
 };
 
