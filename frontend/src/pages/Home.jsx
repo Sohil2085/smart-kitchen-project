@@ -14,6 +14,7 @@ function Home() {
   const { user } = useAuth();
   const location = useLocation();
   const [activeSection, setActiveSection] = useState("dashboard");
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true);
 
   // Handle URL-based navigation
   useEffect(() => {
@@ -97,10 +98,10 @@ function Home() {
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Fixed Sidebar */}
-      <Sidebar />
+      <Sidebar onCollapseChange={setIsSidebarCollapsed} />
       
       {/* Main content with left margin to account for fixed sidebar */}
-      <main className="main-content p-4">
+      <main className={`main-content ${!isSidebarCollapsed ? 'sidebar-expanded' : ''} p-6`}>
         {user ? (
           renderContent()
         ) : (

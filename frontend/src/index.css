@@ -2,22 +2,104 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Custom styles for fixed sidebar layout */
-body {
-  margin: 0;
-  padding: 0;
+@layer base {
+  * {
+    @apply border-gray-200;
+  }
+  
+  body {
+    @apply bg-gray-50 text-gray-900 antialiased;
+    margin: 0;
+    padding: 0;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+      'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+      sans-serif;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
 }
 
-/* Ensure the main content area has proper spacing */
-.main-content {
-  margin-left: 18rem; /* 288px - matches w-72 */
-  min-height: 100vh;
-  transition: margin-left 0.3s ease;
+@layer components {
+  /* Card Styles - Modern Professional */
+  .card {
+    @apply bg-white rounded-lg shadow-sm border border-gray-200;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  
+  .card-hover {
+    @apply card hover:shadow-md hover:border-blue-200 hover:-translate-y-0.5;
+  }
+
+  /* Button Styles */
+  .btn-primary {
+    @apply px-4 py-2 bg-blue-600 text-white rounded-lg 
+           font-medium shadow-sm hover:shadow-md hover:bg-blue-700 
+           transition-all duration-200 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .btn-secondary {
+    @apply px-4 py-2 bg-white text-gray-700 rounded-lg font-medium 
+           border border-gray-300 hover:border-blue-500 hover:bg-gray-50 
+           transition-all duration-200 active:scale-95 shadow-sm;
+  }
+
+  /* Input Styles */
+  .input-modern {
+    @apply w-full px-3 py-2 rounded-lg border border-gray-300 bg-white text-gray-900
+           focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 
+           transition-all duration-200 placeholder:text-gray-400;
+  }
+
+  /* Text Styles */
+  .text-gradient {
+    @apply bg-gradient-to-r from-blue-600 via-purple-600 to-blue-600 
+           bg-clip-text text-transparent;
+    background-size: 200% auto;
+    animation: gradient-shift 3s ease infinite;
+  }
 }
 
-/* Responsive adjustments */
-@media (max-width: 768px) {
+@layer utilities {
+  /* Main Content Layout - Responsive to sidebar collapse */
   .main-content {
-    margin-left: 0;
+    margin-left: 4rem; /* 64px - matches w-16 (collapsed sidebar) */
+    min-height: 100vh;
+    transition: margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  /* When sidebar is expanded */
+  .main-content.sidebar-expanded {
+    margin-left: 18rem; /* 288px - matches w-72 */
+  }
+
+  @media (max-width: 768px) {
+    .main-content {
+      margin-left: 0;
+    }
+    
+    .main-content.sidebar-expanded {
+      margin-left: 0;
+    }
+  }
+
+  /* Hide scrollbar but keep functionality */
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+@keyframes gradient-shift {
+  0%, 100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
   }
 }

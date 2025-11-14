@@ -1,11 +1,28 @@
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../utils/useAuth";
 import { toast } from "sonner";
+import { 
+  LayoutDashboard, 
+  Package, 
+  ShoppingCart, 
+  UtensilsCrossed, 
+  ChefHat, 
+  Trash2, 
+  BarChart3, 
+  Users, 
+  LogOut,
+  Menu,
+  X,
+  Sparkles
+} from "lucide-react";
+import { useState, useEffect } from "react";
 
-function Sidebar() {
+function Sidebar({ onCollapseChange }) {
   const { user, logoutUser } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(true); // Start collapsed by default
 
   const handleLogout = async () => {
     try {
@@ -48,71 +65,144 @@ function Sidebar() {
 
   const activeSection = getActiveSection();
 
-  return (
-    <aside className="fixed left-0 top-0 h-full w-72 bg-white border-r border-gray-200 p-4 flex flex-col z-10 hidden md:flex">
-      <div className="flex items-center gap-3 mb-6">
-        {user ? (
-          <div className="flex items-center gap-3">
+  // Notify parent of collapse state changes
+  useEffect(() => {
+    if (onCollapseChange) {
+      onCollapseChange(isCollapsed);
+    }
+  }, [isCollapsed, onCollapseChange]);
+
+  const menuItems = [
+    ...(isAdmin || isChef ? [{
+      path: "/admin/dashboard",
+      label: "Dashboard",
+      icon: LayoutDashboard,
+      section: "dashboard"
+    }] : []),
+    ...(canManageInventory ? [
+      {
+        path: "/inventory",
+        label: "Inventory",
+        icon: Package,
+        section: "inventory"
+      },
+      {
+        path: "/orders",
+        label: "Orders",
+        icon: ShoppingCart,
+        section: "orders"
+      },
+      {
+        path: "/menu",
+        label: "Menu",
+        icon: UtensilsCrossed,
+        section: "menu"
+      }
+    ] : []),
+    ...(isChef ? [{
+      path: "/recipes",
+      label: "Recipes",
+      icon: ChefHat,
+      section: "recipes"
+    }] : []),
+    ...(isAdmin ? [
+      {
+        path: "/waste",
+        label: "Waste Prediction",
+        icon: Trash2,
+        section: "waste"
+      },
+      {
+        path: "/reports",
+        label: "Reports",
+        icon: BarChart3,
+        section: "reports"
+      },
+      {
+        path: "/employees",
+        label: "Employees",
+        icon: Users,
+        section: "employees"
+      }
+    ] : [])
+  ];
+
+  const SidebarContent = () => (
+    <>
+      {/* Logo and Toggle */}
+      <div className={`flex items-center ${isCollapsed ? 'justify-center' : 'justify-between'} mb-6 pb-4 border-b border-gray-200`}>
+        {!isCollapsed && (
+          <Link to="/" className="flex items-center gap-2 text-xl font-bold text-blue-600">
+            <Sparkles className="w-6 h-6 text-blue-600" />
+            Smart Kitchen
+          </Link>
+        )}
+        {isCollapsed && (
+          <Sparkles className="w-6 h-6 text-blue-600 mx-auto" />
+        )}
+        <button
+          onClick={() => setIsCollapsed(!isCollapsed)}
+          className="p-2 rounded-lg text-gray-500 hover:text-gray-700 hover:bg-gray-100 transition-all hidden md:block"
+          title={isCollapsed ? 'Expand' : 'Collapse'}
+        >
+          {isCollapsed ? <Menu className="w-5 h-5" /> : <X className="w-5 h-5" />}
+        </button>
+      </div>
+
+      {/* User Profile */}
+      {user && (
+        <div className={`mb-6 pb-4 border-b border-gray-200 ${isCollapsed ? 'text-center' : ''}`}>
+          <div className={`flex items-center gap-3 ${isCollapsed ? 'flex-col' : ''}`}>
             {avatarUrl ? (
-              <img src={avatarUrl} alt="profile" className="h-12 w-12 rounded-full object-cover border" />
+              <img 
+                src={avatarUrl} 
+                alt="profile" 
+                className={`h-10 w-10 rounded-full object-cover border-2 border-blue-200 ${isCollapsed ? 'mb-2' : ''}`} 
+              />
             ) : (
-              <div className="h-12 w-12 rounded-full bg-gray-200 flex items-center justify-center text-gray-700 font-semibold border">
+              <div className={`h-10 w-10 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center text-white font-bold text-sm ${isCollapsed ? 'mb-2' : ''}`}>
                 {initials}
               </div>
             )}
-            <div>
-              <div className="font-semibold leading-tight">{displayName}</div>
-              <div className="text-xs text-gray-500">{user.email}</div>
-            </div>
+            {!isCollapsed && (
+              <div className="flex-1 min-w-0">
+                <div className="font-semibold text-gray-900 truncate text-sm">{displayName}</div>
+                <div className="text-xs text-gray-500 truncate">{user.email}</div>
+                <div className="text-xs mt-1">
+                  <span className="px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 font-medium">
+                    {user.role || 'User'}
+                  </span>
+                </div>
+              </div>
+            )}
           </div>
-        ) : (
-          <Link
-            to="/login"
-            className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 rounded-md bg-blue-600 text-white hover:bg-blue-700"
-          >
-            Sign in
-          </Link>
-        )}
-      </div>
+        </div>
+      )}
 
-      {/* Menu */}
-      <nav className="flex-1">
-        <ul className="space-y-1 text-gray-700">
-          {(isAdmin || isChef) && (
-            <li>
-              <Link 
-                to="/admin/dashboard"
-                className={`block w-full text-left px-3 py-2 rounded hover:bg-gray-100 ${
-                  activeSection === "dashboard" ? "bg-blue-100 text-blue-700 font-medium" : ""
-                }`}
-              >
-                📊 Dashboard
-              </Link>
-            </li>
-          )}
-
-          {canManageInventory && (
-            <>
-              <li>
+      {/* Navigation Menu */}
+      <nav className="flex-1 overflow-y-auto no-scrollbar">
+        <ul className="space-y-1">
+          {menuItems.map((item) => {
+            const Icon = item.icon;
+            const isActive = activeSection === item.section;
+            return (
+              <li key={item.path}>
                 <Link 
-                  to="/inventory"
-                  className={`block w-full text-left px-3 py-2 rounded hover:bg-gray-100 ${
-                    activeSection === "inventory" ? "bg-blue-100 text-blue-700 font-medium" : ""
-                  }`}
+                  to={item.path}
+                  className={`group flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 ${
+                    isActive 
+                      ? "bg-blue-50 text-blue-700 font-medium border-l-4 border-blue-600" 
+                      : "text-gray-700 hover:bg-gray-50 hover:text-gray-900"
+                  } ${isCollapsed ? 'justify-center' : ''}`}
+                  onClick={() => setIsMobileMenuOpen(false)}
+                  title={isCollapsed ? item.label : ''}
                 >
-                  📦 Inventory Management
+                  <Icon className={`w-5 h-5 flex-shrink-0 ${isActive ? 'text-blue-600' : 'text-gray-500 group-hover:text-blue-600'}`} />
+                  {!isCollapsed && <span className="text-sm">{item.label}</span>}
                 </Link>
               </li>
-              <li>
-                <Link 
-                  to="/orders"
-                  className={`block w-full text-left px-3 py-2 rounded hover:bg-gray-100 ${
-                    activeSection === "orders" ? "bg-blue-100 text-blue-700 font-medium" : ""
-                  }`}
-                >
-                  🛒 Order Management
-                </Link>
-              </li>
+            );
+          })}
               <li>
                 <Link 
                   to="/menu"
@@ -191,15 +281,58 @@ function Sidebar() {
         {user ? (
           <button
             onClick={handleLogout}
-            className="w-full px-4 py-2 rounded-md bg-gray-800 text-white hover:bg-gray-900"
+            className={`w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200 font-medium transition-all duration-200 ${isCollapsed ? '' : ''}`}
+            title={isCollapsed ? 'Logout' : ''}
           >
-            Logout
+            <LogOut className="w-5 h-5 flex-shrink-0" />
+            {!isCollapsed && <span className="text-sm">Logout</span>}
           </button>
         ) : (
-          <p>Please sign in to access your features.</p>
+          !isCollapsed && (
+            <Link
+              to="/login"
+              className="w-full btn-primary flex items-center justify-center gap-2"
+            >
+              Sign in
+            </Link>
+          )
         )}
       </div>
-    </aside>
+    </>
+  );
+
+  return (
+    <>
+      {/* Mobile Menu Button */}
+      <button
+        onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+        className="fixed top-4 left-4 z-50 md:hidden p-2 rounded-lg bg-white shadow-lg border border-gray-200 text-gray-700 hover:bg-gray-50"
+      >
+        {isMobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+      </button>
+
+      {/* Desktop Sidebar */}
+      <aside 
+        className={`fixed left-0 top-0 h-full bg-white border-r border-gray-200 p-4 flex flex-col z-40 hidden md:flex shadow-sm transition-all duration-300 ${
+          isCollapsed ? 'w-16' : 'w-72'
+        }`}
+      >
+        <SidebarContent />
+      </aside>
+
+      {/* Mobile Sidebar */}
+      {isMobileMenuOpen && (
+        <>
+          <div 
+            className="fixed inset-0 bg-black/50 z-40 md:hidden"
+            onClick={() => setIsMobileMenuOpen(false)}
+          />
+          <aside className="fixed left-0 top-0 h-full w-72 bg-white border-r border-gray-200 p-4 flex flex-col z-50 md:hidden shadow-xl">
+            <SidebarContent />
+          </aside>
+        </>
+      )}
+    </>
   );
 }
 

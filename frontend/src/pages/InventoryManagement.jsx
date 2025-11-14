@@ -209,9 +209,13 @@ const InventoryManagement = () => {
   };
 
 
-  return (
-    <div>
-      <h1 className="text-2xl font-bold mb-4 text-gray-800">Inventory Management</h1>
+    return (
+    <div className="min-h-screen bg-gray-50">
+      {/* Header Section */}
+      <div className="bg-white border-b border-gray-200 mb-6 -mx-6 px-6 py-4">
+        <h1 className="text-2xl font-bold text-gray-900">Inventory Management</h1>
+        <p className="text-sm text-gray-600 mt-1">Manage your kitchen inventory items, track stock levels, and monitor expiry dates</p>
+      </div>
 
       {/* Display Available Items */}
       <div className="mb-8">
