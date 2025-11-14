@@ -7,6 +7,8 @@ import { calculateExpiryDate, requiresManualExpiryDate, getDefaultExpiryDate } f
 import { processExpiredItems, checkExpiredItems } from "../utils/expiredItemsHandler.js";
 import fs from 'fs';
 import path from 'path';
+import FormData from 'form-data';
+import axios from 'axios';
 
 // Get all inventory items
 const getAllInventoryItems = asyncHandler(async (req, res) => {
@@ -551,6 +553,129 @@ const processExpiredInventoryItems = asyncHandler(async (req, res) => {
     }
 });
 
+// Apply daily intake to inventory items (bulk add stock per day)
+const applyDailyIntake = asyncHandler(async (req, res) => {
+    const { entries } = req.body;
+
+    if (!Array.isArray(entries) || entries.length === 0) {
+        throw new apiError("'entries' must be a non-empty array", 400);
+    }
+
+    const now = new Date();
+    const results = [];
+
+    for (const entry of entries) {
+        const { inventoryItemId, quantity, reason } = entry || {};
+
+        if (!inventoryItemId || quantity === undefined || quantity === null) {
+            continue;
+        }
+
+        const addQty = Number(quantity);
+        if (Number.isNaN(addQty) || addQty <= 0) {
+            continue;
+        }
+
+        const updated = await InventoryItem.findByIdAndUpdate(
+            inventoryItemId,
+            {
+                $inc: { currentStock: addQty, quantity: addQty },
+                lastUpdatedBy: req.user?._id
+            },
+            { new: true }
+        );
+
+        if (!updated) {
+            continue;
+        }
+
+        try {
+            await Inventorylog.create({
+                ingredient: inventoryItemId,
+                change: addQty,
+                reason: reason || "Daily intake",
+                date: now
+            });
+        } catch (_) { /* ignore log failures */ }
+
+        results.push({ id: updated._id, name: updated.name, newStock: updated.currentStock });
+    }
+
+    return res.status(200).json(
+        new apiResponse(200, { updatedCount: results.length, results }, "Daily intake applied")
+    );
+});
+
+// Detect spoilage in fruits and vegetables from image
+const detectSpoilage = asyncHandler(async (req, res) => {
+    if (!req.file) {
+        throw new apiError("Image file is required", 400);
+    }
+
+    try {
+        // Create form data to send to Python service
+        const formData = new FormData();
+        formData.append('file', fs.createReadStream(req.file.path));
+        
+        if (req.body.item_type) {
+            formData.append('item_type', req.body.item_type);
+        }
+
+        // Call Python spoilage detection service
+        const spoilageServiceUrl = process.env.SPOILAGE_SERVICE_URL || 'http://localhost:8003';
+        
+        const response = await axios.post(
+            `${spoilageServiceUrl}/detect-spoilage`,
+            formData,
+            {
+                headers: {
+                    ...formData.getHeaders(),
+                },
+                timeout: 30000 // 30 seconds timeout
+            }
+        );
+
+        // Clean up uploaded file
+        try {
+            fs.unlinkSync(req.file.path);
+        } catch (err) {
+            console.warn('Failed to delete temp file:', err);
+        }
+
+        return res.status(200).json(
+            new apiResponse(200, response.data, "Spoilage detection completed successfully")
+        );
+    } catch (error) {
+        // Clean up uploaded file on error
+        if (req.file && req.file.path) {
+            try {
+                fs.unlinkSync(req.file.path);
+            } catch (err) {
+                console.warn('Failed to delete temp file:', err);
+            }
+        }
+
+        console.error('Spoilage detection error:', error);
+        
+        if (error.response) {
+            throw new apiError(
+                error.response.data?.detail || "Spoilage detection service error",
+                error.response.status || 500
+            );
+        } else if (error.code === 'ECONNREFUSED') {
+            throw new apiError(
+                "Spoilage detection service is not available. Please ensure the service is running.",
+                503
+            );
+        } else {
+            throw new apiError(
+                error.message || "Failed to detect spoilage",
+                500
+            );
+        }
+    }
+});
+
 export {
     getAllInventoryItems,
     getInventoryItemById,
@@ -563,5 +688,7 @@ export {
     getItemsByCategory,
     getInventoryStats,
     exportInventoryToCSV,
-    processExpiredInventoryItems
+    processExpiredInventoryItems,
+    applyDailyIntake,
+    detectSpoilage
 };

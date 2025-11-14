@@ -55,6 +55,7 @@ function Sidebar({ onCollapseChange }) {
     if (path === "/orders") return "orders";
     if (path === "/menu") return "menu";
     if (path === "/recipes") return "recipes";
+    if (path === "/spoilage") return "spoilage";
     if (path === "/waste") return "waste";
     if (path === "/reports") return "reports";
     if (path === "/employees") return "employees";
@@ -202,6 +203,76 @@ function Sidebar({ onCollapseChange }) {
               </li>
             );
           })}
+              <li>
+                <Link 
+                  to="/menu"
+                  className={`block w-full text-left px-3 py-2 rounded hover:bg-gray-100 ${
+                    activeSection === "menu" ? "bg-blue-100 text-blue-700 font-medium" : ""
+                  }`}
+                >
+                  🍽️ Menu Management
+                </Link>
+              </li>
+              <li>
+                <Link 
+                  to="/spoilage"
+                  className={`block w-full text-left px-3 py-2 rounded hover:bg-gray-100 ${
+                    activeSection === "spoilage" ? "bg-blue-100 text-blue-700 font-medium" : ""
+                  }`}
+                >
+                  🔍 Spoilage Detection
+                </Link>
+              </li>
+            </>
+          )}
+
+          {isChef && (
+            <li>
+              <Link 
+                to="/recipes"
+                className={`block w-full text-left px-3 py-2 rounded hover:bg-gray-100 ${
+                  activeSection === "recipes" ? "bg-blue-100 text-blue-700 font-medium" : ""
+                }`}
+              >
+                👨‍🍳 Recipe Suggestion
+              </Link>
+            </li>
+          )}
+
+          {isAdmin && (
+            <>
+              <li>
+                <Link 
+                  to="/waste"
+                  className={`block w-full text-left px-3 py-2 rounded hover:bg-gray-100 ${
+                    activeSection === "waste" ? "bg-blue-100 text-blue-700 font-medium" : ""
+                  }`}
+                >
+                  🗑️ Waste Prediction
+                </Link>
+              </li>
+              <li>
+                <Link 
+                  to="/reports"
+                  className={`block w-full text-left px-3 py-2 rounded hover:bg-gray-100 ${
+                    activeSection === "reports" ? "bg-blue-100 text-blue-700 font-medium" : ""
+                  }`}
+                >
+                  📈 Report and Analysis
+                </Link>
+              </li>
+              <li>
+                <Link 
+                  to="/employees"
+                  className={`block w-full text-left px-3 py-2 rounded hover:bg-gray-100 ${
+                    activeSection === "employees" ? "bg-blue-100 text-blue-700 font-medium" : ""
+                  }`}
+                >
+                  👥 Employee Management
+                </Link>
+              </li>
+            </>
+          )}
         </ul>
       </nav>
 

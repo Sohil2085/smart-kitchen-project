@@ -6,6 +6,8 @@ import Dashboard from "./Dashboard";
 import OrderManagement from "./OrderManagement";
 import MenuManagement from "./MenuManagement";
 import ReportAnalysis from "./ReportAnalysis";
+import WastePrediction from "./WastePrediction";
+import SpoilageDetection from "./SpoilageDetection";
 import Sidebar from "../components/Sidebar";
 
 function Home() {
@@ -25,6 +27,8 @@ function Home() {
       setActiveSection("menu");
     } else if (path === "/recipes") {
       setActiveSection("recipes");
+    } else if (path === "/spoilage") {
+      setActiveSection("spoilage");
     } else if (path === "/waste") {
       setActiveSection("waste");
     } else if (path === "/reports") {
@@ -57,6 +61,8 @@ function Home() {
             </div>
           </div>
         );
+      case "spoilage":
+        return <SpoilageDetection />;
       case "waste":
         return (
           <div>

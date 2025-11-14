@@ -1,0 +1,59 @@
+================================================================================
+                    HOW TO SUBMIT - STEP BY STEP GUIDE
+================================================================================
+
+STEP 1: START THE SERVICE
+-------------------------
+Windows: Double-click "START_HERE.bat"
+Mac/Linux: Run "./START_HERE.sh"
+
+Wait until you see: "✅ Service is ready!"
+
+
+STEP 2: TEST THE FEATURE
+-------------------------
+1. Open your frontend application
+2. Go to "Inventory Management" page
+3. Click "Detect Spoilage" button
+4. Use camera to capture a fruit or vegetable
+5. Show the results:
+   - Item detected (e.g., "Apple")
+   - Spoilage level (e.g., "Fresh")
+   - Days remaining (e.g., "5 days")
+
+
+STEP 3: EXPLAIN THE TECHNOLOGY
+-------------------------------
+Say:
+- "Uses YOLO for detecting which fruit/vegetable it is"
+- "Uses CNN model trained on Kaggle datasets for spoilage detection"
+- "Works automatically without any manual setup"
+
+
+WHAT'S INCLUDED:
+----------------
+✅ YOLO Detection - Detects which fruit/vegetable
+✅ Spoilage Detection - Detects if fresh or spoiled
+✅ Days Remaining - Estimates how many days item can be used
+✅ Automatic Setup - Everything works with one click
+
+
+FILES TO SHOW:
+--------------
+- START_HERE.bat / START_HERE.sh (one-click startup)
+- app/main.py (main service code)
+- app/yolo_detector.py (YOLO integration)
+- SUBMISSION_GUIDE.md (full documentation)
+
+
+IF SOMETHING GOES WRONG:
+------------------------
+1. Make sure Python is installed
+2. Run: cd ai-model/spoilage_detection/app
+3. Run: pip install -r requirements.txt
+4. Run: python main.py
+
+
+THAT'S IT! YOU'RE READY TO SUBMIT!
+================================================================================
+
