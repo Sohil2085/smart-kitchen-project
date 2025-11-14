@@ -343,29 +343,8 @@ const OrderManagement = () => {
     }
   };
 
-  // Check if a menu item can be prepared (no expired ingredients)
-  const canPrepareItem = (menuItem) => {
-    // Use the stock status from the backend if available
-    if (menuItem.stockInfo) {
-      return menuItem.stockInfo.isAvailable;
-    }
-    // Fallback: check if any ingredient is expired
-    if (!menuItem.ingredients || menuItem.ingredients.length === 0) return true;
-    const now = new Date();
-    return menuItem.ingredients.every(ingredient => {
-      const ingItem = ingredient.ingredient;
-      if (!ingItem) return false;
-      // Check if ingredient is expired
-      if (ingItem.expiryDate && new Date(ingItem.expiryDate) < now) return false;
-      if (ingItem.status === 'expired') return false;
-      // Check stock availability
-      return ingItem.currentStock >= (ingredient.quantity ?? 0);
-    });
-  };
-
   const filteredMenuItems = menuItems.filter(item => 
-    item.name.toLowerCase().includes(orderSearchTerm.toLowerCase()) &&
-    canPrepareItem(item) // Only show items that can be prepared (no expired ingredients)
+    item.name.toLowerCase().includes(orderSearchTerm.toLowerCase())
   );
 
   const getStatusColor = (status) => {
@@ -672,41 +651,21 @@ const OrderManagement = () => {
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 mb-3"
                   />
                   <div className="max-h-64 overflow-y-auto space-y-2">
-                    {filteredMenuItems.length === 0 ? (
-                      <div className="text-center py-4 text-gray-500">
-                        <p>No available menu items. Some items may have expired ingredients.</p>
-                      </div>
-                    ) : (
-                      filteredMenuItems.map((item) => (
-                        <div key={item._id} className="flex justify-between items-center p-3 border border-gray-200 rounded-lg">
-                          <div>
-                            <h5 className="font-medium">{item.name}</h5>
-                            <p className="text-sm text-gray-600">${item.suggestedPrice}</p>
-                            {item.stockInfo && (
-                              <span className={`text-xs px-2 py-1 rounded-full ${
-                                item.stockInfo.isAvailable 
-                                  ? 'bg-green-100 text-green-800' 
-                                  : 'bg-red-100 text-red-800'
-                              }`}>
-                                {item.stockInfo.isAvailable ? 'Available' : 'Unavailable'}
-                              </span>
-                            )}
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => addItemToOrder(item)}
-                            disabled={!canPrepareItem(item)}
-                            className={`px-3 py-1 rounded text-sm ${
-                              canPrepareItem(item)
-                                ? 'bg-blue-500 text-white hover:bg-blue-600'
-                                : 'bg-gray-400 text-gray-200 cursor-not-allowed'
-                            }`}
-                          >
-                            Add
-                          </button>
+                    {filteredMenuItems.map((item) => (
+                      <div key={item._id} className="flex justify-between items-center p-3 border border-gray-200 rounded-lg">
+                        <div>
+                          <h5 className="font-medium">{item.name}</h5>
+                          <p className="text-sm text-gray-600">${item.suggestedPrice}</p>
                         </div>
-                      ))
-                    )}
+                        <button
+                          type="button"
+                          onClick={() => addItemToOrder(item)}
+                          className="bg-blue-500 text-white px-3 py-1 rounded text-sm hover:bg-blue-600"
+                        >
+                          Add
+                        </button>
+                      </div>
+                    ))}
                   </div>
                 </div>
 
@@ -870,34 +829,17 @@ const OrderManagement = () => {
                   />
                   <div className="max-h-64 overflow-y-auto space-y-2">
                     {menuItems
-                      .filter(item => 
-                        item.name.toLowerCase().includes(editOrderSearchTerm.toLowerCase()) &&
-                        canPrepareItem(item) // Only show items that can be prepared (no expired ingredients)
-                      )
+                      .filter(item => item.name.toLowerCase().includes(editOrderSearchTerm.toLowerCase()))
                       .map((item) => (
                         <div key={item._id} className="flex justify-between items-center p-3 border border-gray-200 rounded-lg">
                           <div>
                             <h5 className="font-medium">{item.name}</h5>
                             <p className="text-sm text-gray-600">${item.suggestedPrice}</p>
-                            {item.stockInfo && (
-                              <span className={`text-xs px-2 py-1 rounded-full ${
-                                item.stockInfo.isAvailable 
-                                  ? 'bg-green-100 text-green-800' 
-                                  : 'bg-red-100 text-red-800'
-                              }`}>
-                                {item.stockInfo.isAvailable ? 'Available' : 'Unavailable'}
-                              </span>
-                            )}
                           </div>
                           <button
                             type="button"
                             onClick={() => addItemToEditOrder(item)}
-                            disabled={!canPrepareItem(item)}
-                            className={`px-3 py-1 rounded text-sm ${
-                              canPrepareItem(item)
-                                ? 'bg-blue-500 text-white hover:bg-blue-600'
-                                : 'bg-gray-400 text-gray-200 cursor-not-allowed'
-                            }`}
+                            className="bg-blue-500 text-white px-3 py-1 rounded text-sm hover:bg-blue-600"
                           >
                             Add
                           </button>

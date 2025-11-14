@@ -63,7 +63,14 @@ function Home() {
       case "spoilage":
         return <SpoilageDetection />;
       case "waste":
-        return <WastePrediction />;
+        return (
+          <div>
+            <h2 className="text-2xl font-semibold mb-4">Waste Prediction</h2>
+            <div className="bg-white p-6 rounded-lg shadow">
+              <p className="text-gray-600">Waste prediction features will be displayed here.</p>
+            </div>
+          </div>
+        );
       case "reports":
         return <ReportAnalysis />;
       case "employees":

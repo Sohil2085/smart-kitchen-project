@@ -26,7 +26,7 @@ function App() {
             <Route path="/employees" element={<Home />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
-          <Toaster position="top-right" richColors />
+          <Toaster position="bottom-right" richColors />
         </div>
       </Router>
     </AuthProvider>
