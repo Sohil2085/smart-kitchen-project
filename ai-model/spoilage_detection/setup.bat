@@ -28,3 +28,5 @@ echo 3. Start service: cd app ^&^& python main.py
 
 cd ..
 
+
+

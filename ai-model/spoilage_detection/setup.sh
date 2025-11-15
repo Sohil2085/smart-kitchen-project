@@ -26,3 +26,5 @@ echo "1. Set up Kaggle API (see train/README_TRAINING.md)"
 echo "2. Train models: cd train && python train_yolo.py"
 echo "3. Start service: cd app && python main.py"
 
+
+

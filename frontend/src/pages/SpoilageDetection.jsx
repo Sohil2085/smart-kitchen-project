@@ -224,3 +224,5 @@ const SpoilageDetection = () => {
 
 export default SpoilageDetection;
 
+
+

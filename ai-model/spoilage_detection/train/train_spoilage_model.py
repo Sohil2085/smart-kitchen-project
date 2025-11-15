@@ -159,7 +159,7 @@ def train_model(data_dir, epochs=10, batch_size=32, learning_rate=0.001):
     model = SpoilageCNN(num_classes=2).to(device)
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=3, verbose=True)
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=3)
     
     print(f"Training on device: {device}")
     print(f"Starting training for {epochs} epochs...")
